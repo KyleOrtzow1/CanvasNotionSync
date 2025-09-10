@@ -360,7 +360,7 @@ document.addEventListener('DOMContentLoaded', function() {
           
           showStatus(message, successCount > 0 ? 'success' : 'error');
           
-          // Update last sync time
+          // Update last sync time display (storage is handled by background.js)
           lastSyncElement.textContent = formatDate(new Date());
         } else {
           showStatus('❌ Sync failed: ' + syncResult.error, 'error');

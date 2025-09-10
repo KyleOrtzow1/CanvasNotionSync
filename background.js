@@ -19,7 +19,7 @@ class CredentialManager {
 
   static async getCredentials() {
     try {
-      const result = await chrome.storage.local.get(['canvasToken', 'notionToken', 'notionDatabaseId']);
+      const result = await chrome.storage.local.get(['canvasToken', 'notionToken', 'notionDatabaseId', 'lastSync']);
       return result;
     } catch (error) {
       console.error('Failed to retrieve credentials:', error);
