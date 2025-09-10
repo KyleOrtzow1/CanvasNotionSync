@@ -36,6 +36,17 @@ class CanvasAPIExtractor {
     }
   }
 
+  extractCourseInfo(courseCode) {
+    // Extract department and number from course codes like "2257-CSC-413-02-1-1639"
+    // Pattern: Look for letters followed by digits (e.g., CSC 413)
+    const match = courseCode.match(/([A-Z]{2,4})-?(\d{3,4})/i);
+    if (match) {
+      return `${match[1]} ${match[2]}`;
+    }
+    // Fallback: return the original course code if pattern doesn't match
+    return courseCode;
+  }
+
   async extractAssignments() {
     if (!this.baseURL) {
       throw new Error('Canvas instance not detected');
@@ -104,7 +115,7 @@ class CanvasAPIExtractor {
 
             transformedAssignments.push({
               title: assignment.name,
-              course: course.name,
+              course: this.extractCourseInfo(course.course_code),
               courseCode: course.course_code,
               dueDate: assignment.due_at,
               points: assignment.points_possible,

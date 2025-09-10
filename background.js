@@ -473,7 +473,7 @@ class AssignmentSyncer {
 
     if (assignment.course) {
       properties["Course"] = {
-        rich_text: [{ text: { content: assignment.course } }]
+        select: { name: assignment.course }
       };
     }
 
@@ -485,7 +485,7 @@ class AssignmentSyncer {
 
     if (assignment.status) {
       properties["Status"] = {
-        rich_text: [{ text: { content: assignment.status } }]
+        select: { name: assignment.status }
       };
     }
 
@@ -507,24 +507,11 @@ class AssignmentSyncer {
       };
     }
 
-    // Add grade information to the new Grade column
-    if (assignment.grade !== null && assignment.grade !== undefined) {
-      // Handle different grade formats
-      if (typeof assignment.grade === 'number') {
-        // Numeric grade (e.g., 85, 92.5)
-        properties["Grade"] = {
-          rich_text: [{ text: { content: assignment.grade.toString() } }]
-        };
-      } else if (typeof assignment.grade === 'string') {
-        // Letter grade (e.g., "A", "B+") or other string format
-        properties["Grade"] = {
-          rich_text: [{ text: { content: assignment.grade } }]
-        };
-      }
-    } else if (assignment.gradePercent !== null && assignment.gradePercent !== undefined) {
-      // Use percentage if available
+    // Add grade as percentage number
+    if (assignment.gradePercent !== null && assignment.gradePercent !== undefined) {
+      // Use calculated percentage as number
       properties["Grade"] = {
-        rich_text: [{ text: { content: `${assignment.gradePercent}%` } }]
+        number: assignment.gradePercent
       };
     }
 
