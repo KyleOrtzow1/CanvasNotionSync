@@ -112,30 +112,8 @@ class CredentialManager {
 
   static async getCredentials() {
     try {
-      const { encryptedCredentials, credentialsVersion } = await chrome.storage.local.get([
-        'encryptedCredentials', 
-        'credentialsVersion'
-      ]);
-      
-      if (!encryptedCredentials) {
-        // Check for legacy unencrypted credentials
-        const legacy = await chrome.storage.local.get(['canvasToken', 'notionToken', 'notionDatabaseId']);
-        if (legacy.canvasToken || legacy.notionToken || legacy.notionDatabaseId) {
-          console.warn('Found legacy unencrypted credentials, migrating to encrypted storage');
-          // Migrate to encrypted storage
-          await this.storeCredentials(legacy.canvasToken, legacy.notionToken, legacy.notionDatabaseId);
-          // Clear legacy credentials
-          await chrome.storage.local.remove(['canvasToken', 'notionToken', 'notionDatabaseId']);
-          // Return the migrated credentials
-          return await this.getCredentials();
-        }
-        return {};
-      }
-      
-      const key = await this.generateEncryptionKey();
-      const credentials = await this.decryptData(encryptedCredentials, key);
-      
-      return credentials;
+      const result = await chrome.storage.local.get(['canvasToken', 'notionToken', 'notionDatabaseId', 'lastSync']);
+      return result;
     } catch (error) {
       console.error('Failed to retrieve credentials:', error);
       // If decryption fails, return empty object and log warning
@@ -144,10 +122,9 @@ class CredentialManager {
     }
   }
 
-  static async clearAllCredentials() {
+  static async clearAllData() {
     try {
       await chrome.storage.local.clear();
-      console.log('All credentials and data cleared securely');
       return { success: true };
     } catch (error) {
       console.error('Failed to clear credentials:', error);
@@ -646,7 +623,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return true;
 
     case 'CLEAR_ALL_DATA':
-      CredentialManager.clearAllCredentials()
+      CredentialManager.clearAllData()
         .then(result => sendResponse(result))
         .catch(error => sendResponse({ success: false, error: error.message }));
       return true;

@@ -12,6 +12,9 @@ document.addEventListener('DOMContentLoaded', function() {
   const statusMessage = document.getElementById('status-message');
   const lastSyncElement = document.getElementById('lastSync');
   const syncStatusElement = document.getElementById('syncStatus');
+  const expandBtn = document.getElementById('expandBtn');
+  const settingsSection = document.getElementById('settingsSection');
+  const clearDataBtn = document.getElementById('clearDataBtn');
 
   // Load existing configuration
   loadConfiguration();
@@ -21,7 +24,8 @@ document.addEventListener('DOMContentLoaded', function() {
   testBtn.addEventListener('click', handleTestConnection);
   if (testCanvasBtn) testCanvasBtn.addEventListener('click', handleTestCanvasAPI);
   manualSyncBtn.addEventListener('click', handleManualSync);
-  clearDataBtn.addEventListener('click', handleClearData);
+  expandBtn.addEventListener('click', toggleSettings);
+  clearDataBtn.addEventListener('click', handleClearAllData);
 
   async function loadConfiguration() {
     try {
@@ -217,11 +221,34 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
 
+  function updateSyncProgress(stage, progress, text) {
+    const button = manualSyncBtn;
+    const buttonText = button.querySelector('.btn-text');
+    
+    // Add progress class and update text
+    button.classList.add('btn-progress');
+    button.style.setProperty('--progress', `${progress}%`);
+    buttonText.textContent = text;
+    
+    // Update sync status with simple text
+    syncStatusElement.textContent = 'Syncing...';
+  }
+
+  function resetSyncButton() {
+    const button = manualSyncBtn;
+    const buttonText = button.querySelector('.btn-text');
+    
+    button.classList.remove('btn-progress');
+    button.style.removeProperty('--progress');
+    button.disabled = false;
+    buttonText.textContent = 'Sync Now';
+    syncStatusElement.textContent = 'Ready';
+  }
+
   async function handleManualSync() {
     try {
       manualSyncBtn.disabled = true;
-      manualSyncBtn.innerHTML = '<span class="loading"></span>Syncing...';
-      syncStatusElement.textContent = 'Syncing...';
+      updateSyncProgress('starting', 0, 'Starting sync...');
 
       // Check for required Canvas API token
       const canvasToken = canvasTokenInput.value.trim();
@@ -231,6 +258,8 @@ document.addEventListener('DOMContentLoaded', function() {
       }
 
       // Get active Canvas tabs (prefer active tab first)
+      updateSyncProgress('checking', 10, 'Finding Canvas tabs...');
+      
       let tabs = await chrome.tabs.query({
         url: "*://*.instructure.com/*",
         active: true
@@ -249,6 +278,7 @@ document.addEventListener('DOMContentLoaded', function() {
       }
 
       const activeTab = tabs[0];
+      updateSyncProgress('connecting', 20, 'Connecting to Canvas...');
       
       // Send Canvas token to content script
       try {
@@ -262,6 +292,8 @@ document.addEventListener('DOMContentLoaded', function() {
       // Wait a moment for content script to be ready
       await new Promise(resolve => setTimeout(resolve, 100));
 
+      updateSyncProgress('extracting', 40, 'Extracting assignments...');
+
       let response;
       try {
         // Send extraction request to the Canvas tab
@@ -271,6 +303,8 @@ document.addEventListener('DOMContentLoaded', function() {
       } catch (error) {
         if (error.message.includes('Could not establish connection')) {
           // Content script not loaded, try to inject it
+          updateSyncProgress('loading', 30, 'Loading Canvas integration...');
+          
           try {
             await chrome.scripting.executeScript({
               target: { tabId: activeTab.id },
@@ -301,6 +335,8 @@ document.addEventListener('DOMContentLoaded', function() {
       }
 
       if (response && response.success && response.assignments.length > 0) {
+        updateSyncProgress('syncing', 70, `Syncing ${response.assignments.length} assignments...`);
+        
         // Sync the extracted assignments
         const syncResult = await chrome.runtime.sendMessage({
           action: 'SYNC_ASSIGNMENTS',
@@ -308,8 +344,15 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         if (syncResult.success) {
+          updateSyncProgress('finishing', 90, 'Finalizing sync...');
+          
           const successCount = syncResult.results.filter(r => r.action !== 'error').length;
           const errorCount = syncResult.results.filter(r => r.action === 'error').length;
+          
+          updateSyncProgress('complete', 100, `Synced ${successCount} assignments!`);
+          
+          // Brief pause to show completion
+          await new Promise(resolve => setTimeout(resolve, 1000));
           
           let message = `✅ Synced ${successCount} assignments via Canvas API`;
           if (errorCount > 0) {
@@ -318,12 +361,14 @@ document.addEventListener('DOMContentLoaded', function() {
           
           showStatus(message, successCount > 0 ? 'success' : 'error');
           
-          // Update last sync time
+          // Update last sync time display (storage is handled by background.js)
           lastSyncElement.textContent = formatDate(new Date());
         } else {
           showStatus('❌ Sync failed: ' + syncResult.error, 'error');
         }
       } else if (response && response.success && response.assignments.length === 0) {
+        updateSyncProgress('complete', 100, 'No assignments found');
+        await new Promise(resolve => setTimeout(resolve, 500));
         showStatus('No assignments found to sync', 'info');
       } else {
         showStatus('❌ Failed to extract assignments: ' + (response?.error || 'Unknown error'), 'error');
@@ -335,9 +380,7 @@ document.addEventListener('DOMContentLoaded', function() {
         showStatus('❌ Sync failed: ' + error.message, 'error');
       }
     } finally {
-      manualSyncBtn.disabled = false;
-      manualSyncBtn.textContent = 'Sync Now';
-      syncStatusElement.textContent = 'Ready';
+      resetSyncButton();
     }
   }
 
@@ -387,15 +430,20 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
 
-  async function handleClearData() {
-    // Show confirmation dialog
-    const confirmed = confirm(
-      '⚠️ WARNING: This will permanently delete all stored credentials, sync data, and settings.\n\n' +
-      'You will need to reconfigure the extension from scratch.\n\n' +
-      'Are you sure you want to continue?'
-    );
+  function toggleSettings() {
+    const isHidden = settingsSection.classList.contains('hidden');
+    
+    if (isHidden) {
+      settingsSection.classList.remove('hidden');
+      expandBtn.textContent = '▲ Hide Settings';
+    } else {
+      settingsSection.classList.add('hidden');
+      expandBtn.textContent = '⚙️ Settings';
+    }
+  }
 
-    if (!confirmed) {
+  async function handleClearAllData() {
+    if (!confirm('Are you sure you want to clear all stored data? This will remove all API tokens and configuration.')) {
       return;
     }
 
@@ -408,15 +456,13 @@ document.addEventListener('DOMContentLoaded', function() {
       });
 
       if (result.success) {
-        showStatus('✅ All data cleared successfully. Extension has been reset.', 'success');
-        
-        // Clear the input fields
+        // Clear the form fields
         canvasTokenInput.value = '';
         notionTokenInput.value = '';
         notionDatabaseInput.value = '';
         lastSyncElement.textContent = 'Never';
         
-        // Update sync status
+        showStatus('✅ All data cleared successfully!', 'success');
         updateSyncStatus();
       } else {
         showStatus('❌ Failed to clear data: ' + result.error, 'error');
