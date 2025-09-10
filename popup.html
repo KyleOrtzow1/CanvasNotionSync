@@ -173,9 +173,9 @@
     <h3>Configuration</h3>
     
     <div class="form-group">
-      <label for="canvasToken">Canvas API Token (Optional)</label>
-      <input type="password" id="canvasToken" placeholder="Enter Canvas API token">
-      <div class="help-text">Leave blank to use DOM scraping. API token provides more reliable data.</div>
+      <label for="canvasToken">Canvas API Token (Required)</label>
+      <input type="password" id="canvasToken" placeholder="Enter Canvas API token" required>
+      <div class="help-text">Required for Canvas assignment extraction. Get this from Canvas → Settings → New Access Token.</div>
     </div>
     
     <div class="form-group">
@@ -228,11 +228,12 @@
         <li>Copy the database ID from the URL</li>
       </ul>
       
-      <p><strong>3. Canvas Token (Optional):</strong></p>
+      <p><strong>3. Canvas API Token (Required):</strong></p>
       <ul style="margin: 8px 0; padding-left: 20px;">
         <li>Go to Canvas → Account → Settings</li>
-        <li>Generate a new access token</li>
-        <li>Copy and paste above</li>
+        <li>Scroll to "Approved Integrations"</li>
+        <li>Click "+ New Access Token"</li>
+        <li>Copy the generated token and paste above</li>
       </ul>
     </div>
   </div>

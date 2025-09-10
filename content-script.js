@@ -1,5 +1,11 @@
-// Canvas API-Based Assignment Extraction - Fixed Version
-console.log('Canvas API-based assignment extractor loaded');
+// Canvas-Notion Sync: API-Only Assignment Extractor
+console.log('Canvas API-only assignment extractor loaded');
+
+// Prevent multiple initialization
+if (window.canvasNotionExtractorLoaded) {
+  console.log('Canvas extractor already loaded, skipping...');
+} else {
+  window.canvasNotionExtractorLoaded = true;
 
 class CanvasAPIExtractor {
   constructor() {
@@ -39,14 +45,12 @@ class CanvasAPIExtractor {
       throw new Error('Canvas instance not detected');
     }
 
-    console.log('Extracting assignments with Canvas API...');
-    
-    // Try to get assignments with API token
-    if (this.canvasToken) {
-      return await this.extractWithAPIToken();
-    } else {
-      return await this.extractWithoutToken();
+    if (!this.canvasToken) {
+      throw new Error('Canvas API token required. Please add your Canvas API token in the extension settings.');
     }
+
+    console.log('Extracting assignments with Canvas API...');
+    return await this.extractWithAPIToken();
   }
 
   async extractWithAPIToken() {
@@ -68,25 +72,61 @@ class CanvasAPIExtractor {
         try {
           const assignments = await this.makeAPICall(`/courses/${course.id}/assignments`, {
             'per_page': 100,
-            'order_by': 'due_at'
+            'order_by': 'due_at',
+            'include': 'submission'
           });
 
           console.log(`Found ${assignments.length} assignments in ${course.name}`);
 
-          // Transform to our format
-          const transformedAssignments = assignments.map(assignment => ({
-            title: assignment.name,
-            course: course.name,
-            courseCode: course.course_code,
-            dueDate: assignment.due_at,
-            points: assignment.points_possible,
-            canvasId: assignment.id.toString(),
-            link: assignment.html_url,
-            status: this.getAssignmentStatus(assignment),
-            type: assignment.submission_types?.join(', ') || 'Assignment',
-            description: assignment.description,
-            source: 'canvas_api'
-          }));
+          // Transform to our format and fetch grades
+          const transformedAssignments = [];
+          for (const assignment of assignments) {
+            let grade = null;
+            let gradePercent = null;
+            let submissionStatus = 'Not Started';
+
+            // Get submission data if available
+            if (assignment.submission) {
+              const submission = assignment.submission;
+              if (submission.grade) {
+                grade = submission.grade;
+              }
+              if (submission.score && assignment.points_possible) {
+                gradePercent = Math.round((submission.score / assignment.points_possible) * 100);
+              }
+              submissionStatus = this.getSubmissionStatus(submission);
+            } else {
+              // Try to get submission separately if not included
+              try {
+                const submission = await this.makeAPICall(`/courses/${course.id}/assignments/${assignment.id}/submissions/self`);
+                if (submission.grade) {
+                  grade = submission.grade;
+                }
+                if (submission.score && assignment.points_possible) {
+                  gradePercent = Math.round((submission.score / assignment.points_possible) * 100);
+                }
+                submissionStatus = this.getSubmissionStatus(submission);
+              } catch (error) {
+                console.warn(`Could not fetch submission for assignment ${assignment.name}:`, error);
+              }
+            }
+
+            transformedAssignments.push({
+              title: assignment.name,
+              course: course.name,
+              courseCode: course.course_code,
+              dueDate: assignment.due_at,
+              points: assignment.points_possible,
+              canvasId: assignment.id.toString(),
+              link: assignment.html_url,
+              status: submissionStatus,
+              type: assignment.submission_types?.join(', ') || 'Assignment',
+              description: assignment.description,
+              grade: grade,
+              gradePercent: gradePercent,
+              source: 'canvas_api'
+            });
+          }
 
           allAssignments.push(...transformedAssignments);
         } catch (error) {
@@ -103,20 +143,6 @@ class CanvasAPIExtractor {
     }
   }
 
-  async extractWithoutToken() {
-    console.log('Attempting to extract without API token...');
-    
-    // Fallback to extracting from intercepted data or DOM
-    const interceptedAssignments = this.getInterceptedAssignments();
-    if (interceptedAssignments.length > 0) {
-      console.log(`Found ${interceptedAssignments.length} assignments from intercepted data`);
-      return interceptedAssignments;
-    }
-    
-    // Final fallback to minimal DOM extraction
-    return this.extractMinimalFromDOM();
-  }
-
   async makeAPICall(endpoint, params = {}) {
     try {
       const url = new URL(this.baseURL + endpoint);
@@ -128,18 +154,21 @@ class CanvasAPIExtractor {
 
       const headers = {
         'Accept': 'application/json',
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.canvasToken}`
       };
-
-      if (this.canvasToken) {
-        headers['Authorization'] = `Bearer ${this.canvasToken}`;
-      }
 
       console.log('Making API call to:', url.toString());
 
-      // Use a bound fetch to avoid illegal invocation
-      const boundFetch = window.fetch.bind(window);
-      const response = await boundFetch(url.toString(), {
+      // Create a safe fetch function to avoid illegal invocation
+      const safeFetch = (() => {
+        const originalFetch = window.fetch;
+        return function(...args) {
+          return originalFetch.apply(window, args);
+        };
+      })();
+
+      const response = await safeFetch(url.toString(), {
         method: 'GET',
         headers: headers,
         credentials: 'include'
@@ -170,179 +199,27 @@ class CanvasAPIExtractor {
     return 'Not Started';
   }
 
-  getInterceptedAssignments() {
-    return window.interceptedAssignments || [];
-  }
-
-  extractMinimalFromDOM() {
-    console.log('Falling back to minimal DOM extraction...');
+  getSubmissionStatus(submission) {
+    if (!submission) return 'Not Started';
     
-    const assignments = [];
-    const plannerItems = document.querySelectorAll('.planner-item');
-    
-    plannerItems.forEach((item, index) => {
-      try {
-        const link = item.querySelector('a[href*="/assignments/"]');
-        if (link) {
-          const canvasId = this.extractCanvasIdFromLink(link.href);
-          const title = link.textContent?.trim();
-          
-          if (title && canvasId) {
-            assignments.push({
-              title: title,
-              course: this.extractCourseFromDOM(item),
-              dueDate: null,
-              points: null,
-              canvasId: canvasId,
-              link: link.href,
-              status: 'Unknown',
-              type: 'Assignment',
-              source: 'dom_fallback'
-            });
-          }
+    switch (submission.workflow_state) {
+      case 'submitted':
+        if (submission.grade) {
+          return 'Graded';
         }
-      } catch (error) {
-        console.warn(`Error parsing planner item ${index}:`, error);
-      }
-    });
-
-    console.log(`DOM fallback found ${assignments.length} assignments`);
-    return assignments;
-  }
-
-  extractCanvasIdFromLink(href) {
-    const match = href.match(/\/assignments\/(\d+)/);
-    return match ? match[1] : null;
-  }
-
-  extractCourseFromDOM(element) {
-    const text = element.textContent;
-    const courseMatch = text.match(/([A-Z]{2,4}\s+\d{3}(?:\s*-\s*\d{2})?)/);
-    return courseMatch ? courseMatch[1] : null;
-  }
-}
-
-// Simple network interception for Canvas API calls
-window.interceptedAssignments = [];
-
-// Store original fetch
-const originalFetch = window.fetch;
-
-window.fetch = function(...args) {
-  const url = args[0];
-  
-  if (typeof url === 'string' && url.includes('/api/v1/')) {
-    return originalFetch.apply(this, args).then(response => {
-      // Clone response to avoid consuming it
-      const clonedResponse = response.clone();
-      
-      // Process intercepted data
-      clonedResponse.json().then(data => {
-        try {
-          // Intercept planner items
-          if (url.includes('/planner/items') && Array.isArray(data)) {
-            console.log(`Intercepted ${data.length} planner items`);
-            const assignments = data
-              .filter(item => item.plannable_type === 'Assignment')
-              .map(item => ({
-                title: item.plannable.title,
-                course: item.context_name,
-                dueDate: item.plannable.due_at,
-                points: item.plannable.points_possible,
-                canvasId: item.plannable.id?.toString(),
-                link: item.html_url,
-                status: 'Unknown',
-                type: 'Assignment',
-                source: 'planner_api'
-              }));
-            
-            window.interceptedAssignments = assignments;
-          }
-          
-          // Intercept assignments
-          if (url.includes('/assignments') && Array.isArray(data)) {
-            console.log(`Intercepted ${data.length} assignments`);
-            // Store for potential use
-            window.interceptedAssignments = window.interceptedAssignments.concat(
-              data.map(assignment => ({
-                title: assignment.name,
-                course: 'Unknown',
-                dueDate: assignment.due_at,
-                points: assignment.points_possible,
-                canvasId: assignment.id?.toString(),
-                link: assignment.html_url,
-                status: 'Unknown',
-                type: 'Assignment',
-                source: 'intercepted_api'
-              }))
-            );
-          }
-        } catch (error) {
-          // Ignore JSON parsing errors
+        return 'Submitted';
+      case 'graded':
+        return 'Graded';
+      case 'pending_review':
+        return 'Pending Review';
+      case 'unsubmitted':
+        if (submission.late) {
+          return 'Late';
         }
-      }).catch(() => {
-        // Ignore errors
-      });
-      
-      return response;
-    });
-  }
-  
-  return originalFetch.apply(this, args);
-};
-
-// Main extractor class
-class EnhancedCanvasExtractor {
-  constructor() {
-    this.apiExtractor = new CanvasAPIExtractor();
-    this.setupMessageListener();
-  }
-
-  setupMessageListener() {
-    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-      switch(request.type) {
-        case 'EXTRACT_ASSIGNMENTS':
-          this.extractAllAssignments()
-            .then(assignments => sendResponse({ success: true, assignments }))
-            .catch(error => sendResponse({ success: false, error: error.message }));
-          return true;
-        case 'SET_CANVAS_TOKEN':
-          this.apiExtractor.canvasToken = request.token;
-          console.log('Canvas token set for API extractor');
-          break;
-      }
-    });
-  }
-
-  async extractAllAssignments() {
-    console.log('Starting comprehensive assignment extraction...');
-    
-    try {
-      // Try API extraction first
-      const assignments = await this.apiExtractor.extractAssignments();
-      
-      // Remove duplicates by Canvas ID
-      const uniqueAssignments = this.deduplicateAssignments(assignments);
-      
-      console.log(`Final result: ${uniqueAssignments.length} unique assignments`);
-      return uniqueAssignments;
-      
-    } catch (error) {
-      console.error('Assignment extraction failed:', error);
-      throw error;
+        return 'Not Started';
+      default:
+        return 'Not Started';
     }
-  }
-
-  deduplicateAssignments(assignments) {
-    const seen = new Set();
-    return assignments.filter(assignment => {
-      const key = assignment.canvasId || assignment.title;
-      if (seen.has(key)) {
-        return false;
-      }
-      seen.add(key);
-      return true;
-    });
   }
 
   async syncAssignments(assignments) {
@@ -353,12 +230,12 @@ class EnhancedCanvasExtractor {
       });
 
       if (response.success) {
-        this.showNotification(`Synced ${assignments.length} assignments`);
+        this.showNotification(`✅ Synced ${assignments.length} assignments to Notion`);
       } else {
-        this.showNotification('Sync failed: ' + response.error, 'error');
+        this.showNotification('❌ Sync failed: ' + response.error, 'error');
       }
     } catch (error) {
-      this.showNotification('Sync failed: ' + error.message, 'error');
+      this.showNotification('❌ Sync failed: ' + error.message, 'error');
     }
   }
 
@@ -376,6 +253,7 @@ class EnhancedCanvasExtractor {
       z-index: 10000;
       font-family: sans-serif;
       font-size: 14px;
+      max-width: 300px;
     `;
     notification.textContent = message;
     
@@ -389,18 +267,18 @@ class EnhancedCanvasExtractor {
   }
 }
 
-// Initialize the enhanced extractor
-const enhancedExtractor = new EnhancedCanvasExtractor();
+// Initialize the API extractor
+const apiExtractor = new CanvasAPIExtractor();
 
-// Add sync button
-function addAPIBasedSyncButton() {
-  if (document.querySelector('#canvas-notion-api-sync-btn')) return;
+// Add sync button to Canvas header
+function addSyncButton() {
+  if (document.querySelector('#canvas-notion-sync-btn')) return;
   
   const header = document.querySelector('#header, .ic-app-header, .enhanced_header');
   if (header) {
     const syncBtn = document.createElement('button');
-    syncBtn.id = 'canvas-notion-api-sync-btn';
-    syncBtn.textContent = 'API Sync to Notion';
+    syncBtn.id = 'canvas-notion-sync-btn';
+    syncBtn.textContent = '🔄 Sync to Notion';
     syncBtn.style.cssText = `
       background: #1976d2;
       color: white;
@@ -410,23 +288,24 @@ function addAPIBasedSyncButton() {
       cursor: pointer;
       margin-left: 10px;
       font-size: 14px;
+      font-weight: 500;
     `;
     
     syncBtn.addEventListener('click', async () => {
-      syncBtn.textContent = 'API Syncing...';
+      syncBtn.textContent = '⏳ Syncing...';
       syncBtn.disabled = true;
       
       try {
-        const assignments = await enhancedExtractor.extractAllAssignments();
+        const assignments = await apiExtractor.extractAssignments();
         if (assignments.length > 0) {
-          await enhancedExtractor.syncAssignments(assignments);
+          await apiExtractor.syncAssignments(assignments);
         } else {
-          enhancedExtractor.showNotification('No assignments found via API');
+          apiExtractor.showNotification('No assignments found', 'warning');
         }
       } catch (error) {
-        enhancedExtractor.showNotification('API sync failed: ' + error.message, 'error');
+        apiExtractor.showNotification('Sync failed: ' + error.message, 'error');
       } finally {
-        syncBtn.textContent = 'API Sync to Notion';
+        syncBtn.textContent = '🔄 Sync to Notion';
         syncBtn.disabled = false;
       }
     });
@@ -435,6 +314,9 @@ function addAPIBasedSyncButton() {
   }
 }
 
-setTimeout(addAPIBasedSyncButton, 3000);
+// Add button after page loads
+setTimeout(addSyncButton, 2000);
 
-console.log('Canvas API-based extraction initialized');
+console.log('Canvas API-only extraction initialized');
+
+} // End of initialization block

@@ -165,7 +165,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const canvasToken = canvasTokenInput.value.trim();
 
     if (!canvasToken) {
-      showStatus('Please enter Canvas API token first', 'error');
+      showStatus('Canvas API token is required for the extension to work', 'error');
       return;
     }
 
@@ -184,24 +184,22 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
       }
 
+      const activeTab = tabs[0];
+      
       // Send token to content script
-      await chrome.tabs.sendMessage(tabs[0].id, {
+      await chrome.tabs.sendMessage(activeTab.id, {
         type: 'SET_CANVAS_TOKEN',
         token: canvasToken
       });
 
       // Test extraction
-      const response = await chrome.tabs.sendMessage(tabs[0].id, {
+      const response = await chrome.tabs.sendMessage(activeTab.id, {
         type: 'EXTRACT_ASSIGNMENTS'
       });
 
       if (response.success) {
-        const apiAssignments = response.assignments.filter(a => a.source?.includes('api'));
-        if (apiAssignments.length > 0) {
-          showStatus(`✅ Canvas API working! Found ${apiAssignments.length} assignments via API`, 'success');
-        } else {
-          showStatus(`⚠️ Canvas token set, but no API assignments found. Found ${response.assignments.length} assignments via other methods.`, 'warning');
-        }
+        const assignmentCount = response.assignments.length;
+        showStatus(`✅ Canvas API working! Found ${assignmentCount} assignments`, 'success');
       } else {
         showStatus('❌ Canvas API test failed: ' + response.error, 'error');
       }
@@ -224,31 +222,84 @@ document.addEventListener('DOMContentLoaded', function() {
       manualSyncBtn.innerHTML = '<span class="loading"></span>Syncing...';
       syncStatusElement.textContent = 'Syncing...';
 
-      // Get active Canvas tabs
-      const tabs = await chrome.tabs.query({
-        url: "*://*.instructure.com/*"
+      // Check for required Canvas API token
+      const canvasToken = canvasTokenInput.value.trim();
+      if (!canvasToken) {
+        showStatus('Canvas API token is required. Please add your Canvas API token first.', 'error');
+        return;
+      }
+
+      // Get active Canvas tabs (prefer active tab first)
+      let tabs = await chrome.tabs.query({
+        url: "*://*.instructure.com/*",
+        active: true
       });
+
+      // If no active Canvas tab, get any Canvas tab
+      if (tabs.length === 0) {
+        tabs = await chrome.tabs.query({
+          url: "*://*.instructure.com/*"
+        });
+      }
 
       if (tabs.length === 0) {
         showStatus('No Canvas tabs found. Please open Canvas first.', 'error');
         return;
       }
 
-      // Send Canvas token if available
-      const canvasToken = canvasTokenInput.value.trim();
-      if (canvasToken) {
-        await chrome.tabs.sendMessage(tabs[0].id, {
+      const activeTab = tabs[0];
+      
+      // Send Canvas token to content script
+      try {
+        await chrome.tabs.sendMessage(activeTab.id, {
           type: 'SET_CANVAS_TOKEN',
           token: canvasToken
-        }).catch(() => {
-          // Content script might not be loaded, ignore
         });
+      } catch (error) {
+        console.warn('Could not set Canvas token - content script may not be loaded');
       }
 
-      // Send extraction request to the active Canvas tab
-      const response = await chrome.tabs.sendMessage(tabs[0].id, {
-        type: 'EXTRACT_ASSIGNMENTS'
-      });
+      // Wait a moment for content script to be ready
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      let response;
+      try {
+        // Send extraction request to the Canvas tab
+        response = await chrome.tabs.sendMessage(activeTab.id, {
+          type: 'EXTRACT_ASSIGNMENTS'
+        });
+      } catch (error) {
+        if (error.message.includes('Could not establish connection')) {
+          // Content script not loaded, try to inject it
+          try {
+            console.log('Content script not loaded, injecting...');
+            await chrome.scripting.executeScript({
+              target: { tabId: activeTab.id },
+              files: ['content-script.js']
+            });
+            
+            // Wait for script to initialize
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Set Canvas token again after injection
+            if (canvasToken) {
+              await chrome.tabs.sendMessage(activeTab.id, {
+                type: 'SET_CANVAS_TOKEN',
+                token: canvasToken
+              });
+            }
+            
+            // Try extraction again
+            response = await chrome.tabs.sendMessage(activeTab.id, {
+              type: 'EXTRACT_ASSIGNMENTS'
+            });
+          } catch (injectionError) {
+            throw new Error('Canvas page not ready. Please refresh Canvas and try again.');
+          }
+        } else {
+          throw error;
+        }
+      }
 
       if (response && response.success && response.assignments.length > 0) {
         // Sync the extracted assignments
@@ -261,15 +312,9 @@ document.addEventListener('DOMContentLoaded', function() {
           const successCount = syncResult.results.filter(r => r.action !== 'error').length;
           const errorCount = syncResult.results.filter(r => r.action === 'error').length;
           
-          let message = `✅ Synced ${successCount} assignments`;
+          let message = `✅ Synced ${successCount} assignments via Canvas API`;
           if (errorCount > 0) {
             message += `, ${errorCount} errors`;
-          }
-
-          // Show extraction method info
-          const apiCount = response.assignments.filter(a => a.source?.includes('api')).length;
-          if (apiCount > 0) {
-            message += ` (${apiCount} via Canvas API)`;
           }
           
           showStatus(message, successCount > 0 ? 'success' : 'error');

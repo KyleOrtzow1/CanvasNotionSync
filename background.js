@@ -29,12 +29,16 @@ class CredentialManager {
   }
 }
 
-// Rate limiter for Notion API (3 requests per second)
+// Optimized Rate limiter for Notion API with burst support
 class NotionRateLimiter {
   constructor() {
     this.requestQueue = [];
     this.processing = false;
-    this.minInterval = 334; // ~3 req/sec
+    this.requestTimes = []; // Track request timestamps for sliding window
+    this.maxRequestsPerSecond = 5; // Allow bursts up to 5 req/sec
+    this.averageRequestsPerSecond = 3; // Maintain 3 req/sec average
+    this.burstWindow = 1000; // 1 second sliding window
+    this.averageWindow = 10000; // 10 second average window
   }
 
   async execute(requestFunction) {
@@ -50,22 +54,58 @@ class NotionRateLimiter {
     this.processing = true;
     
     while (this.requestQueue.length > 0) {
+      const now = Date.now();
+      
+      // Clean old request times
+      this.requestTimes = this.requestTimes.filter(time => now - time < this.averageWindow);
+      
+      // Check if we can make a request
+      const recentRequests = this.requestTimes.filter(time => now - time < this.burstWindow);
+      const averageRequests = this.requestTimes.length;
+      
+      let canMakeRequest = true;
+      let delay = 0;
+      
+      // Check burst limit (5 req/sec)
+      if (recentRequests.length >= this.maxRequestsPerSecond) {
+        delay = Math.max(delay, this.burstWindow - (now - recentRequests[0]));
+        canMakeRequest = false;
+      }
+      
+      // Check average limit (3 req/sec over 10 seconds)
+      if (averageRequests >= (this.averageRequestsPerSecond * (this.averageWindow / 1000))) {
+        const oldestRequest = this.requestTimes[0];
+        delay = Math.max(delay, this.averageWindow - (now - oldestRequest));
+        canMakeRequest = false;
+      }
+      
+      if (!canMakeRequest && delay > 0) {
+        await this.delay(Math.min(delay, 100)); // Cap delay at 100ms for responsiveness
+        continue;
+      }
+      
       const { requestFunction, resolve, reject } = this.requestQueue.shift();
       
       try {
         const result = await requestFunction();
+        this.requestTimes.push(Date.now());
         resolve(result);
       } catch (error) {
-        if (error.message.includes('rate_limited')) {
-          // Retry after delay
-          await this.delay(1000);
+        if (error.message.includes('rate_limited') || error.status === 429) {
+          // Handle 429 rate limit with exponential backoff
+          const retryAfter = error.retryAfter || 1000;
+          console.log(`Rate limited, retrying after ${retryAfter}ms`);
+          await this.delay(retryAfter);
           this.requestQueue.unshift({ requestFunction, resolve, reject });
         } else {
           reject(error);
         }
       }
       
-      await this.delay(this.minInterval);
+      // Small delay to prevent overwhelming
+      if (this.requestQueue.length > 0) {
+        await this.delay(50); // Much smaller delay between requests
+      }
     }
     
     this.processing = false;
@@ -100,7 +140,18 @@ class NotionAPI {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Notion API error: ${response.status} - ${errorText}`);
+        const error = new Error(`Notion API error: ${response.status} - ${errorText}`);
+        error.status = response.status;
+        
+        // Extract retry-after header for 429 responses
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After');
+          if (retryAfter) {
+            error.retryAfter = parseInt(retryAfter) * 1000; // Convert to milliseconds
+          }
+        }
+        
+        throw error;
       }
 
       return await response.json();
@@ -125,7 +176,18 @@ class NotionAPI {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Notion API error: ${response.status} - ${errorText}`);
+        const error = new Error(`Notion API error: ${response.status} - ${errorText}`);
+        error.status = response.status;
+        
+        // Extract retry-after header for 429 responses
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After');
+          if (retryAfter) {
+            error.retryAfter = parseInt(retryAfter) * 1000; // Convert to milliseconds
+          }
+        }
+        
+        throw error;
       }
 
       return await response.json();
@@ -148,7 +210,18 @@ class NotionAPI {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Notion API error: ${response.status} - ${errorText}`);
+        const error = new Error(`Notion API error: ${response.status} - ${errorText}`);
+        error.status = response.status;
+        
+        // Extract retry-after header for 429 responses
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After');
+          if (retryAfter) {
+            error.retryAfter = parseInt(retryAfter) * 1000; // Convert to milliseconds
+          }
+        }
+        
+        throw error;
       }
 
       return await response.json();
@@ -167,7 +240,18 @@ class NotionAPI {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Notion API error: ${response.status} - ${errorText}`);
+        const error = new Error(`Notion API error: ${response.status} - ${errorText}`);
+        error.status = response.status;
+        
+        // Extract retry-after header for 429 responses
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After');
+          if (retryAfter) {
+            error.retryAfter = parseInt(retryAfter) * 1000; // Convert to milliseconds
+          }
+        }
+        
+        throw error;
       }
 
       return await response.json();
@@ -283,6 +367,27 @@ class AssignmentSyncer {
       };
     }
 
+    // Add grade information to the new Grade column
+    if (assignment.grade !== null && assignment.grade !== undefined) {
+      // Handle different grade formats
+      if (typeof assignment.grade === 'number') {
+        // Numeric grade (e.g., 85, 92.5)
+        properties["Grade"] = {
+          rich_text: [{ text: { content: assignment.grade.toString() } }]
+        };
+      } else if (typeof assignment.grade === 'string') {
+        // Letter grade (e.g., "A", "B+") or other string format
+        properties["Grade"] = {
+          rich_text: [{ text: { content: assignment.grade } }]
+        };
+      }
+    } else if (assignment.gradePercent !== null && assignment.gradePercent !== undefined) {
+      // Use percentage if available
+      properties["Grade"] = {
+        rich_text: [{ text: { content: `${assignment.gradePercent}%` } }]
+      };
+    }
+
     return properties;
   }
 
@@ -317,12 +422,76 @@ class AssignmentSyncer {
     if (!this.dataSourceId) {
       await this.initialize();
     }
+
+    console.log(`Starting batch sync of ${assignments.length} assignments...`);
     
-    for (const assignment of assignments) {
-      const result = await this.syncAssignment(assignment);
-      results.push(result);
+    // Batch find existing assignments first to reduce API calls
+    const existingAssignments = new Map();
+    
+    // Get all existing assignments with Canvas IDs in one query
+    const canvasIds = assignments
+      .filter(a => a.canvasId)
+      .map(a => a.canvasId.toString());
+    
+    if (canvasIds.length > 0) {
+      try {
+        // Query all existing assignments at once
+        const existing = await this.notionAPI.queryDataSource(this.dataSourceId, {
+          property: 'Canvas ID',
+          rich_text: {
+            is_not_empty: true
+          }
+        });
+
+        // Build lookup map
+        if (existing.results) {
+          for (const page of existing.results) {
+            const canvasIdProp = page.properties['Canvas ID'];
+            if (canvasIdProp && canvasIdProp.rich_text && canvasIdProp.rich_text.length > 0) {
+              const canvasId = canvasIdProp.rich_text[0].text.content;
+              existingAssignments.set(canvasId, page);
+            }
+          }
+        }
+        
+        console.log(`Found ${existingAssignments.size} existing assignments in Notion`);
+      } catch (error) {
+        console.warn('Failed to batch query existing assignments, falling back to individual queries:', error);
+      }
+    }
+    
+    // Process assignments with reduced API calls
+    const promises = assignments.map(async (assignment) => {
+      try {
+        const existing = existingAssignments.get(assignment.canvasId?.toString());
+        const properties = this.formatAssignmentProperties(assignment);
+
+        if (existing) {
+          // Update existing assignment
+          const result = await this.notionAPI.updatePage(existing.id, properties);
+          return { action: 'updated', assignment: assignment.title, result };
+        } else {
+          // Create new assignment
+          const result = await this.notionAPI.createPage(this.dataSourceId, properties);
+          return { action: 'created', assignment: assignment.title, result };
+        }
+      } catch (error) {
+        console.error('Error syncing assignment:', assignment.title, error);
+        return { action: 'error', assignment: assignment.title, error: error.message };
+      }
+    });
+
+    // Execute up to 3 operations concurrently (respecting rate limits)
+    const batchSize = 3;
+    for (let i = 0; i < promises.length; i += batchSize) {
+      const batch = promises.slice(i, i + batchSize);
+      const batchResults = await Promise.all(batch);
+      results.push(...batchResults);
+      
+      console.log(`Processed batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(promises.length / batchSize)}`);
     }
 
+    console.log(`Batch sync complete: ${results.length} assignments processed`);
     return results;
   }
 }
