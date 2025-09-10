@@ -528,6 +528,33 @@ class AssignmentSyncer {
       const properties = this.formatAssignmentProperties(assignment);
 
       if (existing) {
+        // Check if existing assignment has "In Progress" status
+        const existingStatus = existing.properties?.Status?.select?.name;
+        const newStatus = assignment.status;
+        
+        // If existing status is "In Progress", only update if new status is "Submitted" or "Graded"
+        if (existingStatus === 'In Progress' && 
+            newStatus !== 'Submitted' && 
+            newStatus !== 'Graded') {
+          // Preserve the "In Progress" status
+          if (properties.Status) {
+            properties.Status = {
+              select: { name: 'In Progress' }
+            };
+          }
+        }
+        
+        // If existing status is "Submitted", only update if new status is "Graded"
+        if (existingStatus === 'Submitted' && 
+            newStatus !== 'Graded') {
+          // Preserve the "Submitted" status
+          if (properties.Status) {
+            properties.Status = {
+              select: { name: 'Submitted' }
+            };
+          }
+        }
+        
         // Update existing assignment
         const result = await this.notionAPI.updatePage(existing.id, properties);
         return { action: 'updated', assignment: assignment.title, result };
@@ -592,6 +619,33 @@ class AssignmentSyncer {
         const properties = this.formatAssignmentProperties(assignment);
 
         if (existing) {
+          // Check if existing assignment has "In Progress" status
+          const existingStatus = existing.properties?.Status?.select?.name;
+          const newStatus = assignment.status;
+          
+          // If existing status is "In Progress", only update if new status is "Submitted" or "Graded"
+          if (existingStatus === 'In Progress' && 
+              newStatus !== 'Submitted' && 
+              newStatus !== 'Graded') {
+            // Preserve the "In Progress" status
+            if (properties.Status) {
+              properties.Status = {
+                select: { name: 'In Progress' }
+              };
+            }
+          }
+          
+          // If existing status is "Submitted", only update if new status is "Graded"
+          if (existingStatus === 'Submitted' && 
+              newStatus !== 'Graded') {
+            // Preserve the "Submitted" status
+            if (properties.Status) {
+              properties.Status = {
+                select: { name: 'Submitted' }
+              };
+            }
+          }
+          
           // Update existing assignment
           const result = await this.notionAPI.updatePage(existing.id, properties);
           return { action: 'updated', assignment: assignment.title, result };
@@ -641,6 +695,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         .catch(error => sendResponse({ success: false, error: error.message }));
       return true;
 
+    case 'START_BACKGROUND_SYNC':
+      handleBackgroundSync(request.canvasToken)
+        .then(response => sendResponse(response))
+        .catch(error => sendResponse({ success: false, error: error.message }));
+      return true;
+
     case 'TEST_NOTION_CONNECTION':
       testNotionConnection(request.token, request.databaseId)
         .then(result => sendResponse(result))
@@ -654,6 +714,95 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return true;
   }
 });
+
+async function handleBackgroundSync(canvasToken) {
+  try {
+    const credentials = await CredentialManager.getCredentials();
+    
+    if (!credentials.notionToken || !credentials.notionDatabaseId) {
+      throw new Error('Notion credentials not configured');
+    }
+    
+    if (!canvasToken) {
+      throw new Error('Canvas token not provided');
+    }
+
+    // Find active Canvas tabs
+    const tabs = await chrome.tabs.query({
+      url: "*://*.instructure.com/*"
+    });
+
+    if (tabs.length === 0) {
+      throw new Error('No Canvas tabs found. Please open a Canvas page and try again.');
+    }
+
+    const activeTab = tabs[0];
+    
+    // Try to send Canvas token to content script
+    let contentScriptReady = false;
+    try {
+      await chrome.tabs.sendMessage(activeTab.id, {
+        type: 'SET_CANVAS_TOKEN',
+        token: canvasToken
+      });
+      contentScriptReady = true;
+    } catch (error) {
+      // Content script not loaded, need to inject it
+      contentScriptReady = false;
+    }
+
+    // If content script not ready, inject it
+    if (!contentScriptReady) {
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: activeTab.id },
+          files: ['content-script.js']
+        });
+        
+        // Wait for script to initialize
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Send Canvas token after injection
+        await chrome.tabs.sendMessage(activeTab.id, {
+          type: 'SET_CANVAS_TOKEN',
+          token: canvasToken
+        });
+      } catch (injectionError) {
+        throw new Error('Failed to load Canvas integration. Please refresh the Canvas page and try again.');
+      }
+    }
+
+    // Wait a moment for content script to be ready
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Extract assignments from Canvas
+    const response = await chrome.tabs.sendMessage(activeTab.id, {
+      type: 'EXTRACT_ASSIGNMENTS'
+    });
+
+    if (!response || !response.success) {
+      throw new Error(response?.error || 'Failed to extract assignments from Canvas');
+    }
+
+    if (response.assignments.length === 0) {
+      return { success: true, results: [], assignmentCount: 0, message: 'No assignments found to sync' };
+    }
+
+    // Sync the extracted assignments
+    const results = await handleAssignmentSync(response.assignments);
+    
+    // Update last sync time
+    await chrome.storage.local.set({ lastSync: Date.now() });
+    
+    const returnValue = { success: true, results, assignmentCount: response.assignments.length };
+    console.log('Background sync returning:', returnValue);
+    return returnValue;
+    
+  } catch (error) {
+    console.error('Background sync failed:', error);
+    throw error;
+  }
+}
 
 async function handleAssignmentSync(assignments) {
   try {

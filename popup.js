@@ -256,128 +256,53 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
       }
 
-      // Get active Canvas tabs (prefer active tab first)
-      updateSyncProgress('checking', 10, 'Finding Canvas tabs...');
-      
-      let tabs = await chrome.tabs.query({
-        url: "*://*.instructure.com/*",
-        active: true
-      });
-
-      // If no active Canvas tab, get any Canvas tab
-      if (tabs.length === 0) {
-        tabs = await chrome.tabs.query({
-          url: "*://*.instructure.com/*"
-        });
-      }
-
-      if (tabs.length === 0) {
-        showStatus('No Canvas tabs found. Please open Canvas first.', 'error');
-        return;
-      }
-
-      const activeTab = tabs[0];
       updateSyncProgress('connecting', 20, 'Connecting to Canvas...');
       
-      // Send Canvas token to content script
-      try {
-        await chrome.tabs.sendMessage(activeTab.id, {
-          type: 'SET_CANVAS_TOKEN',
-          token: canvasToken
-        });
-      } catch (error) {
-      }
-
-      // Wait a moment for content script to be ready
-      await new Promise(resolve => setTimeout(resolve, 100));
-
+      // Add some progress steps to make it feel more responsive
+      await new Promise(resolve => setTimeout(resolve, 300));
       updateSyncProgress('extracting', 40, 'Extracting assignments...');
+      
+      await new Promise(resolve => setTimeout(resolve, 200));
+      updateSyncProgress('syncing', 60, 'Syncing to Notion...');
 
-      let response;
-      try {
-        // Send extraction request to the Canvas tab
-        response = await chrome.tabs.sendMessage(activeTab.id, {
-          type: 'EXTRACT_ASSIGNMENTS'
-        });
-      } catch (error) {
-        if (error.message.includes('Could not establish connection')) {
-          // Content script not loaded, try to inject it
-          updateSyncProgress('loading', 30, 'Loading Canvas integration...');
-          
-          try {
-            await chrome.scripting.executeScript({
-              target: { tabId: activeTab.id },
-              files: ['content-script.js']
-            });
-            
-            // Wait for script to initialize
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
-            // Set Canvas token again after injection
-            if (canvasToken) {
-              await chrome.tabs.sendMessage(activeTab.id, {
-                type: 'SET_CANVAS_TOKEN',
-                token: canvasToken
-              });
-            }
-            
-            // Try extraction again
-            response = await chrome.tabs.sendMessage(activeTab.id, {
-              type: 'EXTRACT_ASSIGNMENTS'
-            });
-          } catch (injectionError) {
-            throw new Error('Canvas page not ready. Please refresh Canvas and try again.');
-          }
-        } else {
-          throw error;
-        }
-      }
+      // Start background sync
+      const syncResult = await chrome.runtime.sendMessage({
+        action: 'START_BACKGROUND_SYNC',
+        canvasToken: canvasToken
+      });
 
-      if (response && response.success && response.assignments.length > 0) {
-        updateSyncProgress('syncing', 70, `Syncing ${response.assignments.length} assignments...`);
+      console.log('Popup received sync result:', syncResult);
+
+      if (syncResult.success) {
+        updateSyncProgress('finishing', 90, 'Finalizing sync...');
         
-        // Sync the extracted assignments
-        const syncResult = await chrome.runtime.sendMessage({
-          action: 'SYNC_ASSIGNMENTS',
-          assignments: response.assignments
-        });
-
-        if (syncResult.success) {
-          updateSyncProgress('finishing', 90, 'Finalizing sync...');
-          
-          const successCount = syncResult.results.filter(r => r.action !== 'error').length;
-          const errorCount = syncResult.results.filter(r => r.action === 'error').length;
-          
-          updateSyncProgress('complete', 100, `Synced ${successCount} assignments!`);
-          
-          // Brief pause to show completion
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          let message = `✅ Synced ${successCount} assignments via Canvas API`;
-          if (errorCount > 0) {
-            message += `, ${errorCount} errors`;
-          }
-          
-          showStatus(message, successCount > 0 ? 'success' : 'error');
-          
-          // Update last sync time display (storage is handled by background.js)
-          lastSyncElement.textContent = formatDate(new Date());
-        } else {
-          showStatus('❌ Sync failed: ' + syncResult.error, 'error');
+        // Use the total assignment count from background sync
+        const totalAssignments = syncResult.assignmentCount || 0;
+        
+        // Ensure results is an array before filtering
+        const results = Array.isArray(syncResult.results) ? syncResult.results : [];
+        const successCount = results.filter(r => r.action !== 'error').length;
+        const errorCount = results.filter(r => r.action === 'error').length;
+        
+        updateSyncProgress('complete', 100, `Synced ${totalAssignments} assignments!`);
+        
+        // Brief pause to show completion
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        let message = `✅ Synced ${totalAssignments} assignments via Canvas API`;
+        if (errorCount > 0) {
+          message += `, ${errorCount} errors`;
         }
-      } else if (response && response.success && response.assignments.length === 0) {
-        updateSyncProgress('complete', 100, 'No assignments found');
-        await new Promise(resolve => setTimeout(resolve, 500));
-        showStatus('No assignments found to sync', 'info');
+        
+        showStatus(message, totalAssignments > 0 ? 'success' : 'error');
+        
+        // Update last sync time display
+        lastSyncElement.textContent = formatDate(new Date());
       } else {
-        showStatus('❌ Failed to extract assignments: ' + (response?.error || 'Unknown error'), 'error');
+        showStatus('❌ Sync failed: ' + syncResult.error, 'error');
       }
     } catch (error) {
-      if (error.message.includes('Could not establish connection')) {
-        showStatus('Canvas page not ready. Please refresh Canvas and try again.', 'error');
-      } else {
-        showStatus('❌ Sync failed: ' + error.message, 'error');
-      }
+      showStatus('❌ Sync failed: ' + error.message, 'error');
     } finally {
       resetSyncButton();
     }
