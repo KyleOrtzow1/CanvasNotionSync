@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 400px;
+      padding: 20px;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      background: #f8f9fa;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    
+    .header h1 {
+      color: #2e7d32;
+      font-size: 20px;
+      margin: 0;
+    }
+    
+    .header p {
+      color: #666;
+      font-size: 14px;
+      margin: 5px 0 0 0;
+    }
+    
+    .section {
+      background: white;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .section h3 {
+      margin: 0 0 12px 0;
+      color: #333;
+      font-size: 16px;
+    }
+    
+    .form-group {
+      margin-bottom: 12px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 4px;
+      color: #555;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    
+    input[type="text"], input[type="password"] {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    
+    input[type="text"]:focus, input[type="password"]:focus {
+      outline: none;
+      border-color: #2e7d32;
+      box-shadow: 0 0 0 2px rgba(46, 125, 50, 0.1);
+    }
+    
+    .btn {
+      background: #2e7d32;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      width: 100%;
+      margin-bottom: 8px;
+    }
+    
+    .btn:hover {
+      background: #388e3c;
+    }
+    
+    .btn:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    
+    .btn-secondary {
+      background: #6c757d;
+    }
+    
+    .btn-secondary:hover {
+      background: #5a6268;
+    }
+    
+    .status {
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+    
+    .status.success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    
+    .status.error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    
+    .status.info {
+      background: #d1ecf1;
+      color: #0c5460;
+      border: 1px solid #bee5eb;
+    }
+    
+    .help-text {
+      font-size: 12px;
+      color: #666;
+      margin-top: 4px;
+    }
+    
+    .sync-info {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 12px;
+    }
+    
+    .hidden {
+      display: none;
+    }
+    
+    .loading {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #ccc;
+      border-top: 2px solid #2e7d32;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 8px;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Canvas-Notion Sync</h1>
+    <p>Automatically sync assignments to Notion</p>
+  </div>
+
+  <div id="status-message" class="status hidden"></div>
+
+  <div class="section">
+    <h3>Configuration</h3>
+    
+    <div class="form-group">
+      <label for="canvasToken">Canvas API Token (Optional)</label>
+      <input type="password" id="canvasToken" placeholder="Enter Canvas API token">
+      <div class="help-text">Leave blank to use DOM scraping. API token provides more reliable data.</div>
+    </div>
+    
+    <div class="form-group">
+      <label for="notionToken">Notion Integration Token</label>
+      <input type="password" id="notionToken" placeholder="secret_xxxxxxxxxxxxx" required>
+      <div class="help-text">Get this from your Notion integrations page</div>
+    </div>
+    
+    <div class="form-group">
+      <label for="notionDatabase">Notion Database ID</label>
+      <input type="text" id="notionDatabase" placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" required>
+      <div class="help-text">Find this in your Notion database URL</div>
+    </div>
+    
+    <button id="saveBtn" class="btn">Save Configuration</button>
+    <button id="testBtn" class="btn btn-secondary">Test Notion</button>
+    <button id="testCanvasBtn" class="btn btn-secondary">Test Canvas API</button>
+  </div>
+
+  <div class="section">
+    <h3>Sync Control</h3>
+    
+    <div class="sync-info">
+      <span>Last sync: <span id="lastSync">Never</span></span>
+      <span id="syncStatus">Ready</span>
+    </div>
+    
+    <button id="manualSyncBtn" class="btn">Sync Now</button>
+    
+    <div class="help-text">
+      Automatic sync happens every 30 minutes when browsing Canvas. 
+      Use "Sync Now" to manually trigger synchronization.
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Setup Instructions</h3>
+    <div style="font-size: 13px; color: #666; line-height: 1.4;">
+      <p><strong>1. Create Notion Integration:</strong></p>
+      <ul style="margin: 8px 0; padding-left: 20px;">
+        <li>Go to <a href="https://www.notion.so/my-integrations" target="_blank">notion.so/my-integrations</a></li>
+        <li>Create a new integration</li>
+        <li>Copy the "Internal Integration Token"</li>
+      </ul>
+      
+      <p><strong>2. Share Database:</strong></p>
+      <ul style="margin: 8px 0; padding-left: 20px;">
+        <li>Open your Notion assignments database</li>
+        <li>Click "Share" → "Invite" → Select your integration</li>
+        <li>Copy the database ID from the URL</li>
+      </ul>
+      
+      <p><strong>3. Canvas Token (Optional):</strong></p>
+      <ul style="margin: 8px 0; padding-left: 20px;">
+        <li>Go to Canvas → Account → Settings</li>
+        <li>Generate a new access token</li>
+        <li>Copy and paste above</li>
+      </ul>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

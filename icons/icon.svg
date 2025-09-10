@@ -1,0 +1,10 @@
+<!-- Simple SVG icon placeholder - you can replace with actual PNG icons -->
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <rect width="128" height="128" rx="20" fill="#2e7d32"/>
+  <path d="M30 40h68v8H30z" fill="white"/>
+  <path d="M30 56h68v8H30z" fill="white"/>
+  <path d="M30 72h48v8H30z" fill="white"/>
+  <path d="M30 88h36v8H30z" fill="white"/>
+  <circle cx="90" cy="76" r="12" fill="#4caf50"/>
+  <path d="M86 76l3 3 6-6" stroke="white" stroke-width="2" fill="none"/>
+</svg>
