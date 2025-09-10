@@ -112,13 +112,51 @@ class CredentialManager {
 
   static async getCredentials() {
     try {
-      const result = await chrome.storage.local.get(['canvasToken', 'notionToken', 'notionDatabaseId', 'lastSync']);
-      return result;
+      const { encryptedCredentials, lastSync } = await chrome.storage.local.get(['encryptedCredentials', 'lastSync']);
+      
+      if (encryptedCredentials) {
+        // Decrypt the stored credentials
+        const key = await this.generateEncryptionKey();
+        const credentials = await this.decryptData(encryptedCredentials, key);
+        
+        // Add lastSync to the result
+        return {
+          ...credentials,
+          lastSync: lastSync
+        };
+      } else {
+        // Try legacy unencrypted storage for migration
+        const legacyResult = await chrome.storage.local.get(['canvasToken', 'notionToken', 'notionDatabaseId', 'lastSync']);
+        
+        if (legacyResult.canvasToken || legacyResult.notionToken || legacyResult.notionDatabaseId) {
+          // Migrate to encrypted storage
+          console.log('Migrating legacy credentials to encrypted storage');
+          await this.storeCredentials(
+            legacyResult.canvasToken,
+            legacyResult.notionToken,
+            legacyResult.notionDatabaseId
+          );
+          
+          // Remove legacy credentials
+          await chrome.storage.local.remove(['canvasToken', 'notionToken', 'notionDatabaseId']);
+          
+          return legacyResult;
+        }
+        
+        return {};
+      }
     } catch (error) {
       console.error('Failed to retrieve credentials:', error);
-      // If decryption fails, return empty object and log warning
-      console.warn('Credential decryption failed, credentials may be corrupted');
-      return {};
+      // If decryption fails, try legacy storage
+      console.warn('Credential decryption failed, trying legacy storage');
+      
+      try {
+        const legacyResult = await chrome.storage.local.get(['canvasToken', 'notionToken', 'notionDatabaseId', 'lastSync']);
+        return legacyResult;
+      } catch (legacyError) {
+        console.error('Legacy credential retrieval also failed:', legacyError);
+        return {};
+      }
     }
   }
 
@@ -747,7 +785,7 @@ chrome.runtime.onSuspend.addListener(async () => {
   // This runs when the extension is being suspended/uninstalled
   console.log('Extension suspending, clearing sensitive data...');
   try {
-    await CredentialManager.clearAllCredentials();
+    await CredentialManager.clearAllData();
   } catch (error) {
     console.error('Failed to clear credentials on suspend:', error);
   }

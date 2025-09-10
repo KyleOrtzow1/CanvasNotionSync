@@ -14,7 +14,6 @@ document.addEventListener('DOMContentLoaded', function() {
   const syncStatusElement = document.getElementById('syncStatus');
   const expandBtn = document.getElementById('expandBtn');
   const settingsSection = document.getElementById('settingsSection');
-  const clearDataBtn = document.getElementById('clearDataBtn');
 
   // Load existing configuration
   loadConfiguration();
@@ -24,8 +23,8 @@ document.addEventListener('DOMContentLoaded', function() {
   testBtn.addEventListener('click', handleTestConnection);
   if (testCanvasBtn) testCanvasBtn.addEventListener('click', handleTestCanvasAPI);
   manualSyncBtn.addEventListener('click', handleManualSync);
-  expandBtn.addEventListener('click', toggleSettings);
-  clearDataBtn.addEventListener('click', handleClearAllData);
+  if (expandBtn) expandBtn.addEventListener('click', toggleSettings);
+  if (clearDataBtn) clearDataBtn.addEventListener('click', handleClearAllData);
 
   async function loadConfiguration() {
     try {
