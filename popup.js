@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const testBtn = document.getElementById('testBtn');
   const testCanvasBtn = document.getElementById('testCanvasBtn');
   const manualSyncBtn = document.getElementById('manualSyncBtn');
+  const clearDataBtn = document.getElementById('clearDataBtn');
   const statusMessage = document.getElementById('status-message');
   const lastSyncElement = document.getElementById('lastSync');
   const syncStatusElement = document.getElementById('syncStatus');
@@ -20,6 +21,7 @@ document.addEventListener('DOMContentLoaded', function() {
   testBtn.addEventListener('click', handleTestConnection);
   if (testCanvasBtn) testCanvasBtn.addEventListener('click', handleTestCanvasAPI);
   manualSyncBtn.addEventListener('click', handleManualSync);
+  clearDataBtn.addEventListener('click', handleClearData);
 
   async function loadConfiguration() {
     try {
@@ -382,6 +384,48 @@ document.addEventListener('DOMContentLoaded', function() {
       return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
     } else {
       return date.toLocaleDateString();
+    }
+  }
+
+  async function handleClearData() {
+    // Show confirmation dialog
+    const confirmed = confirm(
+      '⚠️ WARNING: This will permanently delete all stored credentials, sync data, and settings.\n\n' +
+      'You will need to reconfigure the extension from scratch.\n\n' +
+      'Are you sure you want to continue?'
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      clearDataBtn.disabled = true;
+      clearDataBtn.innerHTML = '<span class="loading"></span>Clearing...';
+
+      const result = await chrome.runtime.sendMessage({
+        action: 'CLEAR_ALL_DATA'
+      });
+
+      if (result.success) {
+        showStatus('✅ All data cleared successfully. Extension has been reset.', 'success');
+        
+        // Clear the input fields
+        canvasTokenInput.value = '';
+        notionTokenInput.value = '';
+        notionDatabaseInput.value = '';
+        lastSyncElement.textContent = 'Never';
+        
+        // Update sync status
+        updateSyncStatus();
+      } else {
+        showStatus('❌ Failed to clear data: ' + result.error, 'error');
+      }
+    } catch (error) {
+      showStatus('❌ Failed to clear data: ' + error.message, 'error');
+    } finally {
+      clearDataBtn.disabled = false;
+      clearDataBtn.textContent = 'Clear All Data';
     }
   }
 

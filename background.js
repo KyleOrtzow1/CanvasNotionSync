@@ -1,15 +1,108 @@
 // Canvas-Notion Sync Background Service Worker
 
-// Storage and credential management
+// Encrypted storage and credential management
 class CredentialManager {
+  static async generateEncryptionKey() {
+    try {
+      // Try to get existing key from storage
+      const { encryptionKey } = await chrome.storage.local.get(['encryptionKey']);
+      
+      if (encryptionKey) {
+        // Import the existing key
+        return await crypto.subtle.importKey(
+          'raw',
+          new Uint8Array(encryptionKey),
+          { name: 'AES-GCM' },
+          false,
+          ['encrypt', 'decrypt']
+        );
+      } else {
+        // Generate a new key
+        const key = await crypto.subtle.generateKey(
+          { name: 'AES-GCM', length: 256 },
+          true,
+          ['encrypt', 'decrypt']
+        );
+        
+        // Export and store the key
+        const exportedKey = await crypto.subtle.exportKey('raw', key);
+        await chrome.storage.local.set({ 
+          encryptionKey: Array.from(new Uint8Array(exportedKey))
+        });
+        
+        return key;
+      }
+    } catch (error) {
+      console.error('Failed to generate encryption key:', error);
+      throw error;
+    }
+  }
+
+  static async encryptData(data, key) {
+    try {
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const encodedData = new TextEncoder().encode(JSON.stringify(data));
+      
+      const encrypted = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: iv },
+        key,
+        encodedData
+      );
+      
+      // Combine IV and encrypted data
+      const combined = new Uint8Array(iv.length + encrypted.byteLength);
+      combined.set(iv);
+      combined.set(new Uint8Array(encrypted), iv.length);
+      
+      return Array.from(combined);
+    } catch (error) {
+      console.error('Failed to encrypt data:', error);
+      throw error;
+    }
+  }
+
+  static async decryptData(encryptedArray, key) {
+    try {
+      const combined = new Uint8Array(encryptedArray);
+      const iv = combined.slice(0, 12);
+      const encrypted = combined.slice(12);
+      
+      const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: iv },
+        key,
+        encrypted
+      );
+      
+      const decodedData = new TextDecoder().decode(decrypted);
+      return JSON.parse(decodedData);
+    } catch (error) {
+      console.error('Failed to decrypt data:', error);
+      throw error;
+    }
+  }
+
   static async storeCredentials(canvasToken, notionToken, notionDatabaseId) {
     try {
+      const key = await this.generateEncryptionKey();
+      
+      // Prepare credential data
+      const credentials = {
+        canvasToken: canvasToken || null,
+        notionToken: notionToken || null,
+        notionDatabaseId: notionDatabaseId || null
+      };
+      
+      // Encrypt the credentials
+      const encryptedCredentials = await this.encryptData(credentials, key);
+      
+      // Store encrypted data and metadata
       await chrome.storage.local.set({
-        canvasToken: canvasToken,
-        notionToken: notionToken,
-        notionDatabaseId: notionDatabaseId,
-        lastSync: Date.now()
+        encryptedCredentials: encryptedCredentials,
+        lastSync: Date.now(),
+        credentialsVersion: '1.0' // For future migration support
       });
+      
+      console.log('Credentials stored securely');
       return { success: true };
     } catch (error) {
       console.error('Failed to store credentials:', error);
@@ -19,11 +112,46 @@ class CredentialManager {
 
   static async getCredentials() {
     try {
-      const result = await chrome.storage.local.get(['canvasToken', 'notionToken', 'notionDatabaseId']);
-      return result;
+      const { encryptedCredentials, credentialsVersion } = await chrome.storage.local.get([
+        'encryptedCredentials', 
+        'credentialsVersion'
+      ]);
+      
+      if (!encryptedCredentials) {
+        // Check for legacy unencrypted credentials
+        const legacy = await chrome.storage.local.get(['canvasToken', 'notionToken', 'notionDatabaseId']);
+        if (legacy.canvasToken || legacy.notionToken || legacy.notionDatabaseId) {
+          console.warn('Found legacy unencrypted credentials, migrating to encrypted storage');
+          // Migrate to encrypted storage
+          await this.storeCredentials(legacy.canvasToken, legacy.notionToken, legacy.notionDatabaseId);
+          // Clear legacy credentials
+          await chrome.storage.local.remove(['canvasToken', 'notionToken', 'notionDatabaseId']);
+          // Return the migrated credentials
+          return await this.getCredentials();
+        }
+        return {};
+      }
+      
+      const key = await this.generateEncryptionKey();
+      const credentials = await this.decryptData(encryptedCredentials, key);
+      
+      return credentials;
     } catch (error) {
       console.error('Failed to retrieve credentials:', error);
+      // If decryption fails, return empty object and log warning
+      console.warn('Credential decryption failed, credentials may be corrupted');
       return {};
+    }
+  }
+
+  static async clearAllCredentials() {
+    try {
+      await chrome.storage.local.clear();
+      console.log('All credentials and data cleared securely');
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to clear credentials:', error);
+      return { success: false, error: error.message };
     }
   }
 }
@@ -516,6 +644,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         .then(result => sendResponse(result))
         .catch(error => sendResponse({ success: false, error: error.message }));
       return true;
+
+    case 'CLEAR_ALL_DATA':
+      CredentialManager.clearAllCredentials()
+        .then(result => sendResponse(result))
+        .catch(error => sendResponse({ success: false, error: error.message }));
+      return true;
   }
 });
 
@@ -628,6 +762,32 @@ chrome.alarms.onAlarm.addListener((alarm) => {
         });
       }
     });
+  }
+});
+
+// Security: Clear all data when extension is uninstalled
+chrome.runtime.onSuspend.addListener(async () => {
+  // This runs when the extension is being suspended/uninstalled
+  console.log('Extension suspending, clearing sensitive data...');
+  try {
+    await CredentialManager.clearAllCredentials();
+  } catch (error) {
+    console.error('Failed to clear credentials on suspend:', error);
+  }
+});
+
+// Additional cleanup on startup (in case previous cleanup failed)
+chrome.runtime.onStartup.addListener(async () => {
+  try {
+    // Check if we have orphaned encryption keys without credentials
+    const { encryptionKey, encryptedCredentials } = await chrome.storage.local.get(['encryptionKey', 'encryptedCredentials']);
+    
+    if (encryptionKey && !encryptedCredentials) {
+      console.log('Cleaning up orphaned encryption key');
+      await chrome.storage.local.remove(['encryptionKey']);
+    }
+  } catch (error) {
+    console.error('Startup cleanup failed:', error);
   }
 });
 

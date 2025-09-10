@@ -102,15 +102,38 @@ A Chrome extension that automatically synchronizes Canvas LMS assignments with N
 - **Canvas API**: Uses Canvas REST API v1 for assignment extraction
 - **Notion API**: Uses Notion API v2025-09-03 with data source queries
 - **Rate Limiting**: 3 requests/second average, 5 requests/second burst
-- **Storage**: Credentials stored securely in Chrome's local storage
+- **Storage**: Credentials encrypted and stored securely in Chrome's local storage
 - **Permissions**: Only accesses Canvas sites and Notion API
 
 ## Privacy & Security
 
+### Data Protection
 - All data stays between Canvas, Notion, and your browser
-- API tokens are stored locally and never transmitted to third parties
+- API tokens are encrypted using AES-GCM before local storage
 - No telemetry or analytics collected
 - Source code is available for review
+
+### Security Considerations
+⚠️ **Important Security Notes:**
+
+- **API Token Security**: While tokens are encrypted locally, they are still powerful credentials that grant access to your Canvas and Notion data
+- **Device Security**: If your device is compromised, encrypted tokens could potentially be accessed
+- **Token Scope**: Canvas API tokens have broad access - consider creating tokens with minimal required permissions
+- **Regular Rotation**: Periodically regenerate your API tokens for enhanced security
+- **Shared Devices**: Avoid using this extension on shared or public computers
+
+### Security Features
+- **Automatic Cleanup**: Credentials are automatically cleared when the extension is uninstalled
+- **Manual Data Clear**: Use the "Clear All Data" button in the extension popup to immediately remove all stored credentials
+- **Legacy Migration**: Existing unencrypted credentials are automatically migrated to encrypted storage
+- **Error Handling**: Failed decryption attempts are logged and handled gracefully
+
+### Best Practices
+1. Only install the extension from trusted sources
+2. Keep your browser updated for the latest security patches
+3. Use strong, unique passwords for your Canvas and Notion accounts
+4. Enable two-factor authentication on both Canvas and Notion
+5. Regularly audit the extension's permissions and data access
 
 ## Support
 
