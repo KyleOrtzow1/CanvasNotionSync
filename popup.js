@@ -229,8 +229,8 @@ document.addEventListener('DOMContentLoaded', function() {
     button.style.setProperty('--progress', `${progress}%`);
     buttonText.textContent = text;
     
-    // Update sync status
-    syncStatusElement.textContent = text;
+    // Update sync status with simple text
+    syncStatusElement.textContent = 'Syncing...';
   }
 
   function resetSyncButton() {
