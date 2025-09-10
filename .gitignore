@@ -68,3 +68,4 @@ generate-icons.bat
 
 # claude-ai files
 .claude/
+CLAUDE.md
