@@ -112,7 +112,6 @@ document.addEventListener('DOMContentLoaded', function() {
               });
             }
           } catch (error) {
-            console.warn('Failed to send Canvas token to content scripts:', error);
           }
         }
         
@@ -256,7 +255,6 @@ document.addEventListener('DOMContentLoaded', function() {
           token: canvasToken
         });
       } catch (error) {
-        console.warn('Could not set Canvas token - content script may not be loaded');
       }
 
       // Wait a moment for content script to be ready
@@ -272,7 +270,6 @@ document.addEventListener('DOMContentLoaded', function() {
         if (error.message.includes('Could not establish connection')) {
           // Content script not loaded, try to inject it
           try {
-            console.log('Content script not loaded, injecting...');
             await chrome.scripting.executeScript({
               target: { tabId: activeTab.id },
               files: ['content-script.js']

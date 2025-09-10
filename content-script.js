@@ -1,9 +1,7 @@
 // Canvas-Notion Sync: API-Only Assignment Extractor
-console.log('Canvas API-only assignment extractor loaded');
 
 // Prevent multiple initialization
 if (window.canvasNotionExtractorLoaded) {
-  console.log('Canvas extractor already loaded, skipping...');
 } else {
   window.canvasNotionExtractorLoaded = true;
 
@@ -25,7 +23,6 @@ class CanvasAPIExtractor {
           return true;
         case 'SET_CANVAS_TOKEN':
           this.canvasToken = request.token;
-          console.log('Canvas API token set');
           break;
       }
     });
@@ -36,7 +33,6 @@ class CanvasAPIExtractor {
     const urlMatch = window.location.href.match(/(https:\/\/[^\/]+\.instructure\.com)/);
     if (urlMatch) {
       this.baseURL = urlMatch[1] + '/api/v1';
-      console.log('Detected Canvas instance:', this.baseURL);
     }
   }
 
@@ -49,12 +45,10 @@ class CanvasAPIExtractor {
       throw new Error('Canvas API token required. Please add your Canvas API token in the extension settings.');
     }
 
-    console.log('Extracting assignments with Canvas API...');
     return await this.extractWithAPIToken();
   }
 
   async extractWithAPIToken() {
-    console.log('Using Canvas API token for extraction...');
     
     try {
       // Get all courses for the user
@@ -63,7 +57,6 @@ class CanvasAPIExtractor {
         'per_page': 100
       });
 
-      console.log(`Found ${courses.length} active courses`);
 
       // Get assignments from all courses
       const allAssignments = [];
@@ -76,7 +69,6 @@ class CanvasAPIExtractor {
             'include': 'submission'
           });
 
-          console.log(`Found ${assignments.length} assignments in ${course.name}`);
 
           // Transform to our format and fetch grades
           const transformedAssignments = [];
@@ -107,7 +99,6 @@ class CanvasAPIExtractor {
                 }
                 submissionStatus = this.getSubmissionStatus(submission);
               } catch (error) {
-                console.warn(`Could not fetch submission for assignment ${assignment.name}:`, error);
               }
             }
 
@@ -130,11 +121,9 @@ class CanvasAPIExtractor {
 
           allAssignments.push(...transformedAssignments);
         } catch (error) {
-          console.warn(`Failed to get assignments for course ${course.name}:`, error);
         }
       }
 
-      console.log(`Total assignments extracted via API: ${allAssignments.length}`);
       return allAssignments;
 
     } catch (error) {
@@ -158,7 +147,6 @@ class CanvasAPIExtractor {
         'Authorization': `Bearer ${this.canvasToken}`
       };
 
-      console.log('Making API call to:', url.toString());
 
       // Create a safe fetch function to avoid illegal invocation
       const safeFetch = (() => {
@@ -180,7 +168,6 @@ class CanvasAPIExtractor {
       }
 
       const data = await response.json();
-      console.log(`API call successful, received ${Array.isArray(data) ? data.length : 1} items`);
       return data;
 
     } catch (error) {
@@ -317,6 +304,5 @@ function addSyncButton() {
 // Add button after page loads
 setTimeout(addSyncButton, 2000);
 
-console.log('Canvas API-only extraction initialized');
 
 } // End of initialization block

@@ -30,19 +30,6 @@ This is a Chrome extension (Manifest V3) that automatically syncs Canvas LMS ass
 # 1. Navigate to chrome://extensions/
 # 2. Enable "Developer mode"
 # 3. Click "Load unpacked" and select project directory
-
-# Test Canvas extraction in browser console (on Canvas pages)
-testCanvasExtraction()           # Extract assignments from current page
-analyzeCanvasDOM()              # Debug DOM structure
-runFullTest(notionToken, dbId)  # End-to-end sync test
-```
-
-### Icon Generation
-```bash
-# Generate extension icons from SVG
-node generate-icons.js
-# Or run batch file on Windows
-generate-icons.bat
 ```
 
 ### Dependencies
