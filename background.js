@@ -1,5 +1,4 @@
 // Canvas-Notion Sync Background Service Worker
-console.log('Canvas-Notion Sync service worker starting...');
 
 // Storage and credential management
 class CredentialManager {
@@ -94,7 +93,6 @@ class NotionRateLimiter {
         if (error.message.includes('rate_limited') || error.status === 429) {
           // Handle 429 rate limit with exponential backoff
           const retryAfter = error.retryAfter || 1000;
-          console.log(`Rate limited, retrying after ${retryAfter}ms`);
           await this.delay(retryAfter);
           this.requestQueue.unshift({ requestFunction, resolve, reject });
         } else {
@@ -280,7 +278,6 @@ class AssignmentSyncer {
       
       // Use the first data source
       this.dataSourceId = database.data_sources[0].id;
-      console.log('Using data source ID:', this.dataSourceId);
       
       return { success: true, dataSourceId: this.dataSourceId };
     } catch (error) {
@@ -423,7 +420,6 @@ class AssignmentSyncer {
       await this.initialize();
     }
 
-    console.log(`Starting batch sync of ${assignments.length} assignments...`);
     
     // Batch find existing assignments first to reduce API calls
     const existingAssignments = new Map();
@@ -454,7 +450,6 @@ class AssignmentSyncer {
           }
         }
         
-        console.log(`Found ${existingAssignments.size} existing assignments in Notion`);
       } catch (error) {
         console.warn('Failed to batch query existing assignments, falling back to individual queries:', error);
       }
@@ -488,10 +483,8 @@ class AssignmentSyncer {
       const batchResults = await Promise.all(batch);
       results.push(...batchResults);
       
-      console.log(`Processed batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(promises.length / batchSize)}`);
     }
 
-    console.log(`Batch sync complete: ${results.length} assignments processed`);
     return results;
   }
 }
@@ -560,14 +553,11 @@ async function handleAssignmentSync(assignments) {
 // Updated test function for new API structure
 async function testNotionConnection(token, databaseId) {
   try {
-    console.log('Testing connection with token:', token.substring(0, 20) + '...');
-    console.log('Database ID:', databaseId);
     
     const notionAPI = new NotionAPI(token);
     
     // First, try to get the database
     const database = await notionAPI.getDatabase(databaseId);
-    console.log('Database retrieved successfully:', database.title?.[0]?.text?.content || 'No title');
     
     if (!database.data_sources || database.data_sources.length === 0) {
       return { 
@@ -577,11 +567,9 @@ async function testNotionConnection(token, databaseId) {
     }
     
     const dataSourceId = database.data_sources[0].id;
-    console.log('Found data source:', dataSourceId);
     
     // Test querying the data source
     const queryResult = await notionAPI.queryDataSource(dataSourceId, {});
-    console.log('Data source query successful. Results:', queryResult.results?.length || 0);
     
     return { 
       success: true, 
@@ -643,4 +631,3 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   }
 });
 
-console.log('Canvas-Notion Sync service worker loaded successfully');
