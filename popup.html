@@ -80,6 +80,32 @@
       font-weight: 500;
       width: 100%;
       margin-bottom: 8px;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .btn-progress {
+      position: relative;
+      background: #2e7d32;
+    }
+    
+    .btn-progress::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      background: #4caf50;
+      transition: width 0.3s ease;
+      z-index: 1;
+      width: var(--progress, 0%);
+    }
+    
+    .btn-progress .btn-text {
+      position: relative;
+      z-index: 2;
+      color: white;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.3);
     }
     
     .btn:hover {
@@ -221,7 +247,9 @@
       <span id="syncStatus">Ready</span>
     </div>
     
-    <button id="manualSyncBtn" class="btn">Sync Now</button>
+    <button id="manualSyncBtn" class="btn">
+      <span class="btn-text">Sync Now</span>
+    </button>
     
     <div style="display: flex; justify-content: center; margin-top: 12px;">
       <button id="expandBtn" class="btn-expand">⚙️ Settings</button>
