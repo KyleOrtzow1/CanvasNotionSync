@@ -54,7 +54,6 @@ test-*.html
 *-test.js
 
 # Generated documentation (already removed but adding for future)
-README.md
 NEXT_STEPS.md
 docs/
 
