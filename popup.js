@@ -11,6 +11,9 @@ document.addEventListener('DOMContentLoaded', function() {
   const statusMessage = document.getElementById('status-message');
   const lastSyncElement = document.getElementById('lastSync');
   const syncStatusElement = document.getElementById('syncStatus');
+  const expandBtn = document.getElementById('expandBtn');
+  const settingsSection = document.getElementById('settingsSection');
+  const clearDataBtn = document.getElementById('clearDataBtn');
 
   // Load existing configuration
   loadConfiguration();
@@ -20,6 +23,8 @@ document.addEventListener('DOMContentLoaded', function() {
   testBtn.addEventListener('click', handleTestConnection);
   if (testCanvasBtn) testCanvasBtn.addEventListener('click', handleTestCanvasAPI);
   manualSyncBtn.addEventListener('click', handleManualSync);
+  expandBtn.addEventListener('click', toggleSettings);
+  clearDataBtn.addEventListener('click', handleClearAllData);
 
   async function loadConfiguration() {
     try {
@@ -382,6 +387,51 @@ document.addEventListener('DOMContentLoaded', function() {
       return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
     } else {
       return date.toLocaleDateString();
+    }
+  }
+
+  function toggleSettings() {
+    const isHidden = settingsSection.classList.contains('hidden');
+    
+    if (isHidden) {
+      settingsSection.classList.remove('hidden');
+      expandBtn.textContent = '▲ Hide Settings';
+    } else {
+      settingsSection.classList.add('hidden');
+      expandBtn.textContent = '⚙️ Settings';
+    }
+  }
+
+  async function handleClearAllData() {
+    if (!confirm('Are you sure you want to clear all stored data? This will remove all API tokens and configuration.')) {
+      return;
+    }
+
+    try {
+      clearDataBtn.disabled = true;
+      clearDataBtn.innerHTML = '<span class="loading"></span>Clearing...';
+
+      const result = await chrome.runtime.sendMessage({
+        action: 'CLEAR_ALL_DATA'
+      });
+
+      if (result.success) {
+        // Clear the form fields
+        canvasTokenInput.value = '';
+        notionTokenInput.value = '';
+        notionDatabaseInput.value = '';
+        lastSyncElement.textContent = 'Never';
+        
+        showStatus('✅ All data cleared successfully!', 'success');
+        updateSyncStatus();
+      } else {
+        showStatus('❌ Failed to clear data: ' + result.error, 'error');
+      }
+    } catch (error) {
+      showStatus('❌ Failed to clear data: ' + error.message, 'error');
+    } finally {
+      clearDataBtn.disabled = false;
+      clearDataBtn.textContent = 'Clear All Data';
     }
   }
 

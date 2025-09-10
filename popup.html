@@ -99,6 +99,14 @@
       background: #5a6268;
     }
     
+    .btn-danger {
+      background: #dc3545;
+    }
+    
+    .btn-danger:hover {
+      background: #c82333;
+    }
+    
     .status {
       padding: 8px 12px;
       border-radius: 4px;
@@ -159,6 +167,43 @@
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
+    
+    .btn-expand {
+      background: transparent;
+      color: #666;
+      border: 1px solid #ddd;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+    
+    .btn-expand:hover {
+      background: #f8f9fa;
+      color: #2e7d32;
+      border-color: #2e7d32;
+    }
+    
+    .settings-section {
+      animation: slideDown 0.3s ease-out;
+    }
+    
+    .settings-section.hidden {
+      display: none;
+    }
+    
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
   </style>
 </head>
 <body>
@@ -169,35 +214,8 @@
 
   <div id="status-message" class="status hidden"></div>
 
+  <!-- Simple sync section (always visible) -->
   <div class="section">
-    <h3>Configuration</h3>
-    
-    <div class="form-group">
-      <label for="canvasToken">Canvas API Token (Required)</label>
-      <input type="password" id="canvasToken" placeholder="Enter Canvas API token" required>
-      <div class="help-text">Required for Canvas assignment extraction. Get this from Canvas → Settings → New Access Token.</div>
-    </div>
-    
-    <div class="form-group">
-      <label for="notionToken">Notion Integration Token</label>
-      <input type="password" id="notionToken" placeholder="secret_xxxxxxxxxxxxx" required>
-      <div class="help-text">Get this from your Notion integrations page</div>
-    </div>
-    
-    <div class="form-group">
-      <label for="notionDatabase">Notion Database ID</label>
-      <input type="text" id="notionDatabase" placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" required>
-      <div class="help-text">Find this in your Notion database URL</div>
-    </div>
-    
-    <button id="saveBtn" class="btn">Save Configuration</button>
-    <button id="testBtn" class="btn btn-secondary">Test Notion</button>
-    <button id="testCanvasBtn" class="btn btn-secondary">Test Canvas API</button>
-  </div>
-
-  <div class="section">
-    <h3>Sync Control</h3>
-    
     <div class="sync-info">
       <span>Last sync: <span id="lastSync">Never</span></span>
       <span id="syncStatus">Ready</span>
@@ -205,36 +223,65 @@
     
     <button id="manualSyncBtn" class="btn">Sync Now</button>
     
-    <div class="help-text">
-      Automatic sync happens every 30 minutes when browsing Canvas. 
-      Use "Sync Now" to manually trigger synchronization.
+    <div style="display: flex; justify-content: center; margin-top: 12px;">
+      <button id="expandBtn" class="btn-expand">⚙️ Settings</button>
     </div>
   </div>
 
-  <div class="section">
-    <h3>Setup Instructions</h3>
-    <div style="font-size: 13px; color: #666; line-height: 1.4;">
-      <p><strong>1. Create Notion Integration:</strong></p>
-      <ul style="margin: 8px 0; padding-left: 20px;">
-        <li>Go to <a href="https://www.notion.so/my-integrations" target="_blank">notion.so/my-integrations</a></li>
-        <li>Create a new integration</li>
-        <li>Copy the "Internal Integration Token"</li>
-      </ul>
+  <!-- Collapsible settings section -->
+  <div id="settingsSection" class="settings-section hidden">
+    <div class="section">
+      <h3>Configuration</h3>
       
-      <p><strong>2. Share Database:</strong></p>
-      <ul style="margin: 8px 0; padding-left: 20px;">
-        <li>Open your Notion assignments database</li>
-        <li>Click "Share" → "Invite" → Select your integration</li>
-        <li>Copy the database ID from the URL</li>
-      </ul>
+      <div class="form-group">
+        <label for="canvasToken">Canvas API Token (Required)</label>
+        <input type="password" id="canvasToken" placeholder="Enter Canvas API token" required>
+        <div class="help-text">Required for Canvas assignment extraction. Get this from Canvas → Settings → New Access Token.</div>
+      </div>
       
-      <p><strong>3. Canvas API Token (Required):</strong></p>
-      <ul style="margin: 8px 0; padding-left: 20px;">
-        <li>Go to Canvas → Account → Settings</li>
-        <li>Scroll to "Approved Integrations"</li>
-        <li>Click "+ New Access Token"</li>
-        <li>Copy the generated token and paste above</li>
-      </ul>
+      <div class="form-group">
+        <label for="notionToken">Notion Integration Token</label>
+        <input type="password" id="notionToken" placeholder="secret_xxxxxxxxxxxxx" required>
+        <div class="help-text">Get this from your Notion integrations page</div>
+      </div>
+      
+      <div class="form-group">
+        <label for="notionDatabase">Notion Database ID</label>
+        <input type="text" id="notionDatabase" placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" required>
+        <div class="help-text">Find this in your Notion database URL</div>
+      </div>
+      
+      <button id="saveBtn" class="btn">Save Configuration</button>
+      <button id="testBtn" class="btn btn-secondary">Test Notion</button>
+      <button id="testCanvasBtn" class="btn btn-secondary">Test Canvas API</button>
+      <button id="clearDataBtn" class="btn btn-danger">Clear All Data</button>
+    </div>
+
+    <div class="section">
+      <h3>Setup Instructions</h3>
+      <div style="font-size: 13px; color: #666; line-height: 1.4;">
+        <p><strong>1. Create Notion Integration:</strong></p>
+        <ul style="margin: 8px 0; padding-left: 20px;">
+          <li>Go to <a href="https://www.notion.so/my-integrations" target="_blank">notion.so/my-integrations</a></li>
+          <li>Create a new integration</li>
+          <li>Copy the "Internal Integration Token"</li>
+        </ul>
+        
+        <p><strong>2. Share Database:</strong></p>
+        <ul style="margin: 8px 0; padding-left: 20px;">
+          <li>Open your Notion assignments database</li>
+          <li>Click "Share" → "Invite" → Select your integration</li>
+          <li>Copy the database ID from the URL</li>
+        </ul>
+        
+        <p><strong>3. Canvas API Token (Required):</strong></p>
+        <ul style="margin: 8px 0; padding-left: 20px;">
+          <li>Go to Canvas → Account → Settings</li>
+          <li>Scroll to "Approved Integrations"</li>
+          <li>Click "+ New Access Token"</li>
+          <li>Copy the generated token and paste above</li>
+        </ul>
+      </div>
     </div>
   </div>
 

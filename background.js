@@ -26,6 +26,16 @@ class CredentialManager {
       return {};
     }
   }
+
+  static async clearAllData() {
+    try {
+      await chrome.storage.local.clear();
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to clear credentials:', error);
+      return { success: false, error: error.message };
+    }
+  }
 }
 
 // Optimized Rate limiter for Notion API with burst support
@@ -513,6 +523,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     case 'TEST_NOTION_CONNECTION':
       testNotionConnection(request.token, request.databaseId)
+        .then(result => sendResponse(result))
+        .catch(error => sendResponse({ success: false, error: error.message }));
+      return true;
+
+    case 'CLEAR_ALL_DATA':
+      CredentialManager.clearAllData()
         .then(result => sendResponse(result))
         .catch(error => sendResponse({ success: false, error: error.message }));
       return true;
