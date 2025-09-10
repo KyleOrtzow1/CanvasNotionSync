@@ -99,6 +99,14 @@
       background: #5a6268;
     }
     
+    .btn-danger {
+      background: #dc3545;
+    }
+    
+    .btn-danger:hover {
+      background: #c82333;
+    }
+    
     .status {
       padding: 8px 12px;
       border-radius: 4px;
@@ -208,6 +216,17 @@
     <div class="help-text">
       Automatic sync happens every 30 minutes when browsing Canvas. 
       Use "Sync Now" to manually trigger synchronization.
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Security</h3>
+    
+    <button id="clearDataBtn" class="btn btn-danger">Clear All Data</button>
+    
+    <div class="help-text">
+      ⚠️ This will permanently delete all stored credentials and sync data. 
+      Use this if you want to completely reset the extension or for security purposes.
     </div>
   </div>
 
