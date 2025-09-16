@@ -1,157 +1,110 @@
 # Canvas-Notion Assignment Sync
 
-A Chrome extension that automatically synchronizes Canvas LMS assignments with Notion databases, keeping your assignment tracker up-to-date effortlessly.
+A Chrome extension designed to automatically synchronize assignments from the Canvas Learning Management System with a Notion database. This tool is for students and educators who use Notion for task management and want to keep their academic assignments seamlessly updated.
 
-## Features
+## Core Features
 
-- 🔄 **Automatic Sync**: Syncs assignments every 30 minutes when browsing Canvas
-- 📚 **Complete Assignment Data**: Includes course, due dates, points, grades, and submission status
-- 🎯 **Smart Deduplication**: Uses Canvas IDs to prevent duplicate entries
-- ⚡ **Rate-Limited API Calls**: Respectful API usage with built-in rate limiting
-- 🔧 **Easy Setup**: Simple configuration through extension popup
-- 🔔 **Notifications**: Get notified when sync completes or fails
+* **Automatic Synchronization**: The extension periodically syncs assignments in the background (every 30 minutes) while you are actively using Canvas.
+* **Comprehensive Data Sync**: Captures all essential assignment details, including the course name, due dates, point values, grades, and submission status.
+* **Intelligent Deduplication**: Utilizes Canvas assignment IDs to prevent the creation of duplicate entries in your Notion database, ensuring a clean and accurate to-do list.
+* **Respectful API Usage**: Implements a rate limiter to manage API calls to both Canvas and Notion, preventing service disruptions and ensuring smooth operation.
+* **User-Friendly Configuration**: A simple popup interface allows for straightforward setup and management of your API tokens and database information.
+* **Sync Notifications**: Provides on-screen notifications to keep you informed about the status of each sync operation, whether it completes successfully or encounters an issue.
 
-## Installation
+## Installation Guide
 
-### From Source (Developer Mode)
+To install the extension from the source code, please follow these steps:
 
-1. Clone or download this repository
-2. Open Chrome and go to `chrome://extensions/`
-3. Enable "Developer mode" (toggle in top right)
-4. Click "Load unpacked" and select the project folder
-5. The extension icon will appear in your toolbar
+1.  Download or clone this repository to your local machine.
+2.  Open the Google Chrome browser and navigate to `chrome://extensions/`.
+3.  Enable "Developer mode" using the toggle switch in the top-right corner of the page.
+4.  Click on the "Load unpacked" button and select the directory where you saved the project files.
+5.  Once loaded, the Canvas-Notion Sync extension icon will appear in your browser's toolbar.
 
-## Setup
+## Configuration
 
-### 1. Prepare Your Notion Database
+Before you can begin syncing assignments, you will need to configure the extension to connect to your Notion and Canvas accounts.
 
-1. Create or open your assignments database in Notion
-2. Ensure it has these columns (create if missing):
-   - **Assignment Name** (Title)
-   - **Course** (Text)
-   - **Due Date** (Date)
-   - **Status** (Text)
-   - **Points** (Number)
-   - **Link to Resources** (URL)
-   - **Canvas ID** (Text)
-   - **Grade** (Text)
+### 1. Notion Database Setup
 
-### 2. Create Notion Integration
+First, prepare your Notion database by ensuring it includes the following properties. The names should match exactly to ensure a successful sync.
 
-1. Go to [notion.so/my-integrations](https://www.notion.so/my-integrations)
-2. Click "New integration"
-3. Give it a name (e.g., "Canvas Sync")
-4. Copy the **Internal Integration Token**
-5. Go to Access tab
-6. Add your database
+* **Assignment Name** (Title)
+* **Course** (Select)
+* **Due Date** (Date)
+* **Status** (Select)
+* **Points** (Number)
+* **Link to Resources** (URL)
+* **Canvas ID** (Text)
+* **Grade** (number)
 
+### 2. Create a Notion Integration
 
+Next, you'll need to create a Notion integration to allow the extension to access your database.
 
-### 3. Get Canvas API Token
+1.  Navigate to [notion.so/my-integrations](https://www.notion.so/my-integrations).
+2.  Click on "New integration".
+3.  Provide a name for your integration, such as "Canvas Sync".
+4.  Copy the **Internal Integration Token** that is generated. You will need this for the extension configuration.
+5.  Go to the "Access" tab for your new integration and add your assignments database.
 
-1. Go to Canvas → **Account** → **Settings**
-2. Scroll to **Approved Integrations**
-3. Click **+ New Access Token**
-4. Enter a purpose (e.g., "Notion Sync")
-5. Copy the generated token
+### 3. Obtain a Canvas API Token
 
-### 4. Configure Extension
+You will also need to generate an API token from your Canvas account.
 
-1. Click the extension icon in your toolbar
-2. Enter your tokens and database ID
-3. Click **Save Configuration**
-4. Test connections using the **Test** buttons
-5. Try **Sync Now** to verify everything works
+1.  Log in to Canvas and go to **Account** > **Settings**.
+2.  Scroll down to the **Approved Integrations** section.
+3.  Click on **+ New Access Token**.
+4.  Give the token a purpose, for example, "Notion Sync".
+5.  Copy the generated token.
 
-## Usage
+### 4. Configure the Extension
 
-### Automatic Sync
-- The extension automatically syncs every 30 minutes when you have Canvas tabs open
-- No manual intervention required once configured
+Finally, input the information you've gathered into the extension's settings.
 
-### Manual Sync
-- Click the extension icon and press **Sync Now**
-- Or use the **🔄 Sync to Notion** button that appears in Canvas
+1.  Click on the extension icon in your browser's toolbar.
+2.  Enter the Notion Integration Token, the Notion Database ID, and the Canvas API Token into their respective fields.
+3.  Click **Save Configuration**.
+4.  You can use the "Test" buttons to verify that the connections to Notion and Canvas are working correctly.
 
-### Sync Status
-- Green notifications: Successful sync
-- Red notifications: Errors occurred
-- Check the popup for last sync time
+## How to Use
+
+Once configured, the extension is designed to work with minimal user interaction.
+
+* **Automatic Sync**: The extension will automatically sync assignments in the background every 30 minutes, as long as you have a Canvas tab open in your browser.
+* **Manual Sync**: If you need to sync your assignments immediately, you can open the extension popup and click the **Sync Now** button. A "Sync to Notion" button will also be available within the Canvas interface for quick access.
+
+You can monitor the sync status and the time of the last sync from the extension's popup menu.
 
 ## Troubleshooting
 
-### "Canvas API token required"
-- Make sure you've entered a valid Canvas API token in the extension settings
-- Verify the token works by clicking **Test Canvas API**
+If you encounter any issues, here are a few common problems and their solutions:
 
-### "Notion connection failed"
-- Check that your integration token is correct
-- Ensure the database is shared with your integration
-- Verify the database ID is the 32-character string from the URL
+* **"Canvas API token required"**: This error indicates that a valid Canvas API token has not been saved in the extension's settings. Please verify your token and try again.
+* **"Notion connection failed"**: This can be caused by an incorrect integration token or database ID. Ensure that your Notion database has been shared with the integration you created.
+* **"No Canvas tabs found"**: For the sync to work, you must have an active tab open to a Canvas page.
 
-### "No Canvas tabs found"
-- Make sure you have a Canvas page open (*.instructure.com)
-- Try refreshing the Canvas page and sync again
+## Technical Overview
 
-### Rate Limiting
-- The extension automatically handles API rate limits
-- If you see delays, this is normal behavior to respect service limits
+* The extension is built using the **Canvas REST API (v1)** for extracting assignment data.
+* It utilizes the **Notion API (v2025-09-03)** for all database operations.
+* A custom rate limiter is in place to manage API requests, with an average of 3 requests per second and a burst capacity of 5 requests per second.
+* All user credentials are encrypted using **AES-GCM** and stored securely in Chrome's local storage.
 
-## Technical Details
+## Privacy and Security
 
-- **Canvas API**: Uses Canvas REST API v1 for assignment extraction
-- **Notion API**: Uses Notion API v2025-09-03 with data source queries
-- **Rate Limiting**: 3 requests/second average, 5 requests/second burst
-- **Storage**: Credentials encrypted and stored securely in Chrome's local storage
-- **Permissions**: Only accesses Canvas sites and Notion API
+The privacy and security of your data are a top priority.
 
-## Privacy & Security
+* **Data Protection**: All communication occurs directly between your browser, Canvas, and Notion. No data is collected or transmitted to any third-party servers.
+* **Secure Storage**: Your API tokens are encrypted before being stored locally on your machine.
+* **Automatic Data Removal**: All stored credentials are automatically cleared from your browser when the extension is uninstalled. You can also manually clear all data at any time using the "Clear All Data" button in the extension's settings.
 
-### Data Protection
-- All data stays between Canvas, Notion, and your browser
-- API tokens are encrypted using AES-GCM before local storage
-- No telemetry or analytics collected
-- Source code is available for review
+While this extension is designed with security in mind, please be aware that your API tokens provide extensive access to your Canvas and Notion accounts. It is recommended that you use this extension on a personal, secure computer and consider periodically rotating your API tokens.
 
-### Security Considerations
-⚠️ **Important Security Notes:**
+## Support and Contributions
 
-- **API Token Security**: While tokens are encrypted locally, they are still powerful credentials that grant access to your Canvas and Notion data
-- **Device Security**: If your device is compromised, encrypted tokens could potentially be accessed
-- **Token Scope**: Canvas API tokens have broad access - consider creating tokens with minimal required permissions
-- **Regular Rotation**: Periodically regenerate your API tokens for enhanced security
-- **Shared Devices**: Avoid using this extension on shared or public computers
-
-### Security Features
-- **Automatic Cleanup**: Credentials are automatically cleared when the extension is uninstalled
-- **Manual Data Clear**: Use the "Clear All Data" button in the extension popup to immediately remove all stored credentials
-- **Legacy Migration**: Existing unencrypted credentials are automatically migrated to encrypted storage
-- **Error Handling**: Failed decryption attempts are logged and handled gracefully
-
-### Best Practices
-1. Only install the extension from trusted sources
-2. Keep your browser updated for the latest security patches
-3. Use strong, unique passwords for your Canvas and Notion accounts
-4. Enable two-factor authentication on both Canvas and Notion
-5. Regularly audit the extension's permissions and data access
-
-## Support
-
-If you encounter issues:
-
-1. Check the browser console for error messages
-2. Verify your API tokens and database setup
-3. Try the test buttons in the extension popup
-4. Ensure Canvas and Notion are accessible
-
-## Contributing
-
-This is an open-source project. Feel free to:
-- Report bugs or issues
-- Suggest new features
-- Submit pull requests
-- Improve documentation
+This is an open-source project. If you need assistance, would like to report a bug, or are interested in contributing, please feel free to open an issue or submit a pull request on the project's GitHub page.
 
 ## License
 
-MIT License - see LICENSE file for details
+This project is licensed under the MIT License.
