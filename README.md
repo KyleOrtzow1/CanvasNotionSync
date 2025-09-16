@@ -2,6 +2,10 @@
 
 A Chrome extension designed to automatically synchronize assignments from the Canvas Learning Management System with a Notion database. This tool is for students and educators who use Notion for task management and want to keep their academic assignments seamlessly updated.
 
+<div align="center">
+  <img src="assets/demo.gif" alt="Demo" />
+</div>
+
 ## Core Features
 
 * **Automatic Synchronization**: The extension periodically syncs assignments in the background (every 30 minutes) while you are actively using Canvas.
