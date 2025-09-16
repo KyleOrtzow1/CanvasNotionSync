@@ -99,7 +99,7 @@ export async function handleAssignmentSync(assignments) {
       throw new Error('Notion credentials not configured');
     }
 
-    const notionAPI = new NotionAPI(credentials.notionToken);
+    const notionAPI = new NotionAPI(credentials.notionToken, { bypassRateLimit: true });
     const syncer = new AssignmentSyncer(notionAPI, credentials.notionDatabaseId);
     
     const results = await syncer.syncAssignments(assignments);
@@ -126,7 +126,7 @@ export async function handleAssignmentSync(assignments) {
 export async function testNotionConnection(token, databaseId) {
   try {
     
-    const notionAPI = new NotionAPI(token);
+    const notionAPI = new NotionAPI(token, { bypassRateLimit: true });
     
     // First, try to get the database
     const database = await notionAPI.getDatabase(databaseId);

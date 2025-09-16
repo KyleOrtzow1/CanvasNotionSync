@@ -4,10 +4,10 @@ export class NotionRateLimiter {
     this.requestQueue = [];
     this.processing = false;
     this.requestTimes = []; // Track request timestamps for sliding window
-    this.maxRequestsPerSecond = 5; // Allow bursts up to 5 req/sec
-    this.averageRequestsPerSecond = 3; // Maintain 3 req/sec average
+    this.maxRequestsPerSecond = 25; // Allow 25 req/sec bursts for personal use
+    this.averageRequestsPerSecond = 10; // Average 10 req/sec for small batches
     this.burstWindow = 1000; // 1 second sliding window
-    this.averageWindow = 10000; // 10 second average window
+    this.averageWindow = 5000; // 5 second window for faster recovery
   }
 
   async execute(requestFunction) {
@@ -35,13 +35,13 @@ export class NotionRateLimiter {
       let canMakeRequest = true;
       let delay = 0;
       
-      // Check burst limit (5 req/sec)
+      // Check burst limit (25 req/sec)
       if (recentRequests.length >= this.maxRequestsPerSecond) {
         delay = Math.max(delay, this.burstWindow - (now - recentRequests[0]));
         canMakeRequest = false;
       }
       
-      // Check average limit (3 req/sec over 10 seconds)
+      // Check average limit (10 req/sec over 5 seconds)
       if (averageRequests >= (this.averageRequestsPerSecond * (this.averageWindow / 1000))) {
         const oldestRequest = this.requestTimes[0];
         delay = Math.max(delay, this.averageWindow - (now - oldestRequest));
@@ -49,7 +49,7 @@ export class NotionRateLimiter {
       }
       
       if (!canMakeRequest && delay > 0) {
-        await this.delay(Math.min(delay, 100)); // Cap delay at 100ms for responsiveness
+        await this.delay(Math.min(delay, 20)); // Much shorter delay cap
         continue;
       }
       
@@ -70,10 +70,8 @@ export class NotionRateLimiter {
         }
       }
       
-      // Small delay to prevent overwhelming
-      if (this.requestQueue.length > 0) {
-        await this.delay(50); // Much smaller delay between requests
-      }
+      // Remove artificial delays for personal use - let it run at full speed
+      // Rate limiter will handle throttling if needed
     }
     
     this.processing = false;
