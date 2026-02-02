@@ -91,39 +91,70 @@ export class AssignmentSyncer {
       await this.initialize();
     }
 
-    
-    // Batch find existing assignments first to reduce API calls
+    console.log(`🔍 Starting duplicate prevention lookup for ${assignments.length} assignments from Canvas`);
+
+    // Build lookup map by querying each Canvas ID individually
+    // This ensures we find all existing assignments, avoiding duplicates
     const existingAssignments = new Map();
-    
-    // Get all existing assignments with Canvas IDs in one query
+
+    // Get all Canvas IDs we need to check
     const canvasIds = assignments
       .filter(a => a.canvasId)
       .map(a => a.canvasId.toString());
-    
+
+    console.log(`📋 Canvas IDs to check: ${canvasIds.length}`);
+
     if (canvasIds.length > 0) {
-      try {
-        // Query all existing assignments at once
-        const existing = await this.notionAPI.queryDataSource(this.dataSourceId, {
-          property: 'Canvas ID',
-          rich_text: {
-            is_not_empty: true
+      // Query each Canvas ID individually to avoid pagination issues
+      // Process in small batches to respect rate limits
+      const lookupBatchSize = 5;
+      let foundCount = 0;
+
+      for (let i = 0; i < canvasIds.length; i += lookupBatchSize) {
+        const batchIds = canvasIds.slice(i, i + lookupBatchSize);
+        const batchNumber = Math.floor(i / lookupBatchSize) + 1;
+        const totalLookupBatches = Math.ceil(canvasIds.length / lookupBatchSize);
+
+        console.log(`🔎 Lookup batch ${batchNumber}/${totalLookupBatches}: Checking ${batchIds.length} Canvas IDs`);
+
+        // Query each ID in this batch
+        const lookupPromises = batchIds.map(async (canvasId) => {
+          try {
+            const result = await this.notionAPI.queryDataSource(this.dataSourceId, {
+              property: 'Canvas ID',
+              rich_text: {
+                equals: canvasId  // Specific filter - finds exact match
+              }
+            });
+
+            // Store the first result (should only be one per Canvas ID)
+            if (result.results && result.results.length > 0) {
+              const page = result.results[0];
+              existingAssignments.set(canvasId, page);
+              return { canvasId, found: true };
+            }
+            return { canvasId, found: false };
+          } catch (error) {
+            console.warn(`Failed to query Canvas ID ${canvasId}:`, error.message);
+            return { canvasId, found: false, error: true };
           }
         });
 
-        // Build lookup map
-        if (existing.results) {
-          for (const page of existing.results) {
-            const canvasIdProp = page.properties['Canvas ID'];
-            if (canvasIdProp && canvasIdProp.rich_text && canvasIdProp.rich_text.length > 0) {
-              const canvasId = canvasIdProp.rich_text[0].text.content;
-              existingAssignments.set(canvasId, page);
-            }
-          }
+        const batchResults = await Promise.all(lookupPromises);
+        const batchFoundCount = batchResults.filter(r => r.found).length;
+        foundCount += batchFoundCount;
+
+        console.log(`✅ Lookup batch ${batchNumber} complete: ${batchFoundCount}/${batchIds.length} found in Notion`);
+
+        // Small delay between lookup batches
+        if (i + lookupBatchSize < canvasIds.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
-        
-      } catch (error) {
-        console.warn('Failed to batch query existing assignments, falling back to individual queries:', error);
       }
+
+      console.log(`\n📊 Lookup complete: ${foundCount}/${canvasIds.length} assignments already exist in Notion`);
+      console.log(`   ➕ Will create: ${canvasIds.length - foundCount} new assignments`);
+      console.log(`   🔄 Will update: ${foundCount} existing assignments\n`);
     }
     
     // Process assignments with reduced API calls
