@@ -29,7 +29,7 @@ class CanvasAPIExtractor {
 
   detectCanvasInstance() {
     // Extract Canvas base URL from current page
-    const urlMatch = window.location.href.match(/(https:\/\/[^\/]+\.instructure\.com)/);
+    const urlMatch = window.location.href.match(/(https:\/\/[^/]+\.instructure\.com)/);
     if (urlMatch) {
       this.baseURL = urlMatch[1] + '/api/v1';
     }
@@ -132,6 +132,7 @@ class CanvasAPIExtractor {
 
           allAssignments.push(...transformedAssignments);
         } catch (error) {
+          // Course assignments could not be fetched, continue with next course
         }
       }
 
@@ -269,9 +270,9 @@ class CanvasAPIExtractor {
 const apiExtractor = new CanvasAPIExtractor();
 
 // Add sync button to Canvas header
-function addSyncButton() {
+const addSyncButton = () => {
   if (document.querySelector('#canvas-notion-sync-btn')) return;
-  
+
   const header = document.querySelector('#header, .ic-app-header, .enhanced_header');
   if (header) {
     const syncBtn = document.createElement('button');
@@ -288,11 +289,11 @@ function addSyncButton() {
       font-size: 14px;
       font-weight: 500;
     `;
-    
+
     syncBtn.addEventListener('click', async () => {
       syncBtn.textContent = '⏳ Syncing...';
       syncBtn.disabled = true;
-      
+
       try {
         const assignments = await apiExtractor.extractAssignments();
         if (assignments.length > 0) {
@@ -307,10 +308,10 @@ function addSyncButton() {
         syncBtn.disabled = false;
       }
     });
-    
+
     header.appendChild(syncBtn);
   }
-}
+};
 
 // Add button after page loads
 setTimeout(addSyncButton, 2000);
