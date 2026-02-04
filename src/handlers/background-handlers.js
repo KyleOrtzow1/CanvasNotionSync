@@ -1,15 +1,52 @@
 import { CredentialManager } from '../credentials/credential-manager.js';
 import { NotionAPI } from '../api/notion-api.js';
 import { AssignmentSyncer } from '../sync/assignment-syncer.js';
+import { CanvasCacheManager } from '../cache/canvas-cache-manager.js';
+import { NotionCacheManager } from '../cache/notion-cache-manager.js';
 
-export async function handleBackgroundSync(canvasToken) {
+// Cache manager singleton instances
+let canvasCacheInstance = null;
+let notionCacheInstance = null;
+
+/**
+ * Get singleton Canvas cache instance
+ * @returns {CanvasCacheManager}
+ */
+export function getCanvasCache() {
+  if (!canvasCacheInstance) {
+    canvasCacheInstance = new CanvasCacheManager();
+  }
+  return canvasCacheInstance;
+}
+
+/**
+ * Get singleton Notion cache instance
+ * @returns {NotionCacheManager}
+ */
+export function getNotionCache() {
+  if (!notionCacheInstance) {
+    notionCacheInstance = new NotionCacheManager();
+  }
+  return notionCacheInstance;
+}
+
+export async function handleBackgroundSync(canvasToken, options = {}) {
   try {
+    const forceRefresh = options.forceRefresh || false;
+
+    // Invalidate caches on manual sync with force refresh
+    if (forceRefresh) {
+      const canvasCache = getCanvasCache();
+      await canvasCache.invalidateOnManualSync();
+      console.log('🗑️ Caches invalidated for manual sync');
+    }
+
     const credentials = await CredentialManager.getCredentials();
-    
+
     if (!credentials.notionToken || !credentials.notionDatabaseId) {
       throw new Error('Notion credentials not configured');
     }
-    
+
     if (!canvasToken) {
       throw new Error('Canvas token not provided');
     }
@@ -64,7 +101,8 @@ export async function handleBackgroundSync(canvasToken) {
 
     // Extract assignments from Canvas
     const response = await chrome.tabs.sendMessage(activeTab.id, {
-      type: 'EXTRACT_ASSIGNMENTS'
+      type: 'EXTRACT_ASSIGNMENTS',
+      forceRefresh: forceRefresh
     });
 
     if (!response || !response.success) {
@@ -93,13 +131,16 @@ export async function handleBackgroundSync(canvasToken) {
 export async function handleAssignmentSync(assignments) {
   try {
     const credentials = await CredentialManager.getCredentials();
-    
+
     if (!credentials.notionToken || !credentials.notionDatabaseId) {
       throw new Error('Notion credentials not configured');
     }
 
     const notionAPI = new NotionAPI(credentials.notionToken, { bypassRateLimit: true });
-    const syncer = new AssignmentSyncer(notionAPI, credentials.notionDatabaseId);
+
+    // Pass cache to syncer
+    const notionCache = getNotionCache();
+    const syncer = new AssignmentSyncer(notionAPI, credentials.notionDatabaseId, notionCache);
     
     const results = await syncer.syncAssignments(assignments);
     

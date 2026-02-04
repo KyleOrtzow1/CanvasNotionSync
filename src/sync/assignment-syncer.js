@@ -1,8 +1,9 @@
 // Assignment synchronization logic
 export class AssignmentSyncer {
-  constructor(notionAPI, databaseId) {
+  constructor(notionAPI, databaseId, notionCache = null) {
     this.notionAPI = notionAPI;
     this.databaseId = databaseId;
+    this.notionCache = notionCache;
     this.dataSourceId = null;
   }
 
@@ -104,56 +105,84 @@ export class AssignmentSyncer {
     console.log(`📋 Canvas IDs to check: ${canvasIds.length}`);
 
     if (canvasIds.length > 0) {
-      // Query each Canvas ID individually to avoid pagination issues
-      // Process in small batches to respect rate limits
-      const lookupBatchSize = 5;
-      let foundCount = 0;
+      // Check cache first
+      let cachedLookups = new Map();
+      let uncachedIds = canvasIds;
 
-      for (let i = 0; i < canvasIds.length; i += lookupBatchSize) {
-        const batchIds = canvasIds.slice(i, i + lookupBatchSize);
-        const batchNumber = Math.floor(i / lookupBatchSize) + 1;
-        const totalLookupBatches = Math.ceil(canvasIds.length / lookupBatchSize);
+      if (this.notionCache) {
+        cachedLookups = await this.notionCache.getCachedLookupBatch(canvasIds);
+        uncachedIds = canvasIds.filter(id => !cachedLookups.has(id));
 
-        console.log(`🔎 Lookup batch ${batchNumber}/${totalLookupBatches}: Checking ${batchIds.length} Canvas IDs`);
+        console.log(`📊 Cache hit: ${cachedLookups.size}/${canvasIds.length} lookups (${uncachedIds.length} need API query)`);
 
-        // Query each ID in this batch
-        const lookupPromises = batchIds.map(async (canvasId) => {
-          try {
-            const result = await this.notionAPI.queryDataSource(this.dataSourceId, {
-              property: 'Canvas ID',
-              rich_text: {
-                equals: canvasId  // Specific filter - finds exact match
-              }
-            });
-
-            // Store the first result (should only be one per Canvas ID)
-            if (result.results && result.results.length > 0) {
-              const page = result.results[0];
-              existingAssignments.set(canvasId, page);
-              return { canvasId, found: true };
-            }
-            return { canvasId, found: false };
-          } catch (error) {
-            console.warn(`Failed to query Canvas ID ${canvasId}:`, error.message);
-            return { canvasId, found: false, error: true };
-          }
-        });
-
-        const batchResults = await Promise.all(lookupPromises);
-        const batchFoundCount = batchResults.filter(r => r.found).length;
-        foundCount += batchFoundCount;
-
-        console.log(`✅ Lookup batch ${batchNumber} complete: ${batchFoundCount}/${batchIds.length} found in Notion`);
-
-        // Small delay between lookup batches
-        if (i + lookupBatchSize < canvasIds.length) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+        // Merge cached results
+        for (const [canvasId, page] of cachedLookups) {
+          existingAssignments.set(canvasId, page);
         }
       }
 
-      console.log(`\n📊 Lookup complete: ${foundCount}/${canvasIds.length} assignments already exist in Notion`);
-      console.log(`   ➕ Will create: ${canvasIds.length - foundCount} new assignments`);
-      console.log(`   🔄 Will update: ${foundCount} existing assignments\n`);
+      // Only query uncached IDs
+      if (uncachedIds.length > 0) {
+        const lookupBatchSize = 5;
+        let foundCount = 0;
+
+        for (let i = 0; i < uncachedIds.length; i += lookupBatchSize) {
+          const batchIds = uncachedIds.slice(i, i + lookupBatchSize);
+          const batchNumber = Math.floor(i / lookupBatchSize) + 1;
+          const totalLookupBatches = Math.ceil(uncachedIds.length / lookupBatchSize);
+
+          console.log(`🔎 Lookup batch ${batchNumber}/${totalLookupBatches}: Checking ${batchIds.length} Canvas IDs`);
+
+          // Query each ID in this batch
+          const lookupPromises = batchIds.map(async (canvasId) => {
+            try {
+              const result = await this.notionAPI.queryDataSource(this.dataSourceId, {
+                property: 'Canvas ID',
+                rich_text: {
+                  equals: canvasId  // Specific filter - finds exact match
+                }
+              });
+
+              // Store the first result (should only be one per Canvas ID)
+              if (result.results && result.results.length > 0) {
+                const page = result.results[0];
+
+                // Cache the lookup result
+                if (this.notionCache) {
+                  await this.notionCache.cacheLookup(canvasId, page);
+                }
+
+                existingAssignments.set(canvasId, page);
+                return { canvasId, found: true };
+              }
+              return { canvasId, found: false };
+            } catch (error) {
+              console.warn(`Failed to query Canvas ID ${canvasId}:`, error.message);
+              return { canvasId, found: false, error: true };
+            }
+          });
+
+          const batchResults = await Promise.all(lookupPromises);
+          const batchFoundCount = batchResults.filter(r => r.found).length;
+          foundCount += batchFoundCount;
+
+          console.log(`✅ Lookup batch ${batchNumber} complete: ${batchFoundCount}/${batchIds.length} found in Notion`);
+
+          // Small delay between lookup batches
+          if (i + lookupBatchSize < uncachedIds.length) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        }
+
+        const totalFoundCount = foundCount + cachedLookups.size;
+        console.log(`\n📊 Lookup complete: ${totalFoundCount}/${canvasIds.length} assignments already exist in Notion`);
+        console.log(`   ➕ Will create: ${canvasIds.length - totalFoundCount} new assignments`);
+        console.log(`   🔄 Will update: ${totalFoundCount} existing assignments\n`);
+      } else {
+        console.log(`\n📊 All lookups served from cache! ${cachedLookups.size}/${canvasIds.length} assignments already exist in Notion`);
+        console.log(`   ➕ Will create: ${canvasIds.length - cachedLookups.size} new assignments`);
+        console.log(`   🔄 Will update: ${cachedLookups.size} existing assignments\n`);
+      }
     }
     
     // Process assignments with reduced API calls
