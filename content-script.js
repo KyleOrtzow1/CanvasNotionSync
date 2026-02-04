@@ -138,7 +138,7 @@ class CanvasAPIExtractor {
       return allAssignments;
 
     } catch (error) {
-      console.error('API extraction failed:', error);
+      console.error('API extraction failed:', error.message);
       throw error;
     }
   }
@@ -182,7 +182,7 @@ class CanvasAPIExtractor {
       return data;
 
     } catch (error) {
-      console.error('API call failed:', error);
+      console.error('API call failed:', error.message);
       throw error;
     }
   }

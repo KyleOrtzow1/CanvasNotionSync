@@ -52,9 +52,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
       // Update sync status based on configuration completeness
       updateSyncStatus();
-      
+
     } catch (error) {
-      console.error('Failed to load configuration:', error);
       showStatus('Failed to load configuration', 'error');
     }
   }
@@ -90,8 +89,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     try {
-      saveBtn.disabled = true;
-      saveBtn.innerHTML = '<span class="loading"></span>Saving...';
+      setButtonLoading(saveBtn, 'Saving...');
 
       const result = await chrome.runtime.sendMessage({
         action: 'STORE_CREDENTIALS',
@@ -143,8 +141,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     try {
-      testBtn.disabled = true;
-      testBtn.innerHTML = '<span class="loading"></span>Testing...';
+      setButtonLoading(testBtn, 'Testing...');
 
       const result = await chrome.runtime.sendMessage({
         action: 'TEST_NOTION_CONNECTION',
@@ -174,8 +171,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     try {
-      testCanvasBtn.disabled = true;
-      testCanvasBtn.innerHTML = '<span class="loading"></span>Testing...';
+      setButtonLoading(testCanvasBtn, 'Testing...');
 
       // Send token to content script and test
       const tabs = await chrome.tabs.query({
@@ -270,8 +266,6 @@ document.addEventListener('DOMContentLoaded', function() {
         action: 'START_BACKGROUND_SYNC',
         canvasToken: canvasToken
       });
-
-      console.log('Popup received sync result:', syncResult);
 
       if (syncResult.success) {
         updateSyncProgress('finishing', 90, 'Finalizing sync...');
@@ -372,8 +366,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     try {
-      clearDataBtn.disabled = true;
-      clearDataBtn.innerHTML = '<span class="loading"></span>Clearing...';
+      setButtonLoading(clearDataBtn, 'Clearing...');
 
       const result = await chrome.runtime.sendMessage({
         action: 'CLEAR_ALL_DATA'
@@ -397,6 +390,15 @@ document.addEventListener('DOMContentLoaded', function() {
       clearDataBtn.disabled = false;
       clearDataBtn.textContent = 'Clear All Data';
     }
+  }
+
+  // Helper function to safely set button loading state
+  function setButtonLoading(button, loadingText) {
+    button.disabled = true;
+    const loadingSpan = document.createElement('span');
+    loadingSpan.className = 'loading';
+    button.textContent = loadingText;
+    button.insertBefore(loadingSpan, button.firstChild);
   }
 
   // Update sync status when inputs change

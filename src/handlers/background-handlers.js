@@ -80,13 +80,12 @@ export async function handleBackgroundSync(canvasToken) {
     
     // Update last sync time
     await chrome.storage.local.set({ lastSync: Date.now() });
-    
-    const returnValue = { success: true, results, assignmentCount: response.assignments.length };
-    console.log('Background sync returning:', returnValue);
-    return returnValue;
-    
+
+    return { success: true, results, assignmentCount: response.assignments.length };
+
+
   } catch (error) {
-    console.error('Background sync failed:', error);
+    console.error('Background sync failed:', error.message);
     throw error;
   }
 }
@@ -116,7 +115,7 @@ export async function handleAssignmentSync(assignments) {
 
     return results;
   } catch (error) {
-    console.error('Sync failed:', error);
+    console.error('Sync failed:', error.message);
     showNotification('Sync Failed', error.message);
     throw error;
   }
@@ -147,9 +146,10 @@ export async function testNotionConnection(token, databaseId) {
       success: true, 
       message: `Connection successful! Database: "${database.title?.[0]?.text?.content || 'Untitled'}" with ${database.data_sources.length} data source(s). Found ${queryResult.results?.length || 0} existing pages.`
     };
-    
+
+
   } catch (error) {
-    console.error('Connection test failed:', error);
+    console.error('Connection test failed:', error.message);
     return { success: false, error: error.message };
   }
 }
@@ -211,11 +211,10 @@ export function setupPeriodicSync() {
 export function setupSecurityHandlers() {
   chrome.runtime.onSuspend.addListener(async () => {
     // This runs when the extension is being suspended/uninstalled
-    console.log('Extension suspending, clearing sensitive data...');
     try {
       await CredentialManager.clearAllData();
     } catch (error) {
-      console.error('Failed to clear credentials on suspend:', error);
+      // Silent fail - extension is shutting down
     }
   });
 
@@ -224,13 +223,12 @@ export function setupSecurityHandlers() {
     try {
       // Check if we have orphaned encryption keys without credentials
       const { encryptionKey, encryptedCredentials } = await chrome.storage.local.get(['encryptionKey', 'encryptedCredentials']);
-      
+
       if (encryptionKey && !encryptedCredentials) {
-        console.log('Cleaning up orphaned encryption key');
         await chrome.storage.local.remove(['encryptionKey']);
       }
     } catch (error) {
-      console.error('Startup cleanup failed:', error);
+      // Silent fail - cleanup will retry on next startup
     }
   });
 }

@@ -31,7 +31,6 @@ export class CredentialManager {
         return key;
       }
     } catch (error) {
-      console.error('Failed to generate encryption key:', error);
       throw error;
     }
   }
@@ -54,7 +53,6 @@ export class CredentialManager {
       
       return Array.from(combined);
     } catch (error) {
-      console.error('Failed to encrypt data:', error);
       throw error;
     }
   }
@@ -74,7 +72,6 @@ export class CredentialManager {
       const decodedData = new TextDecoder().decode(decrypted);
       return JSON.parse(decodedData);
     } catch (error) {
-      console.error('Failed to decrypt data:', error);
       throw error;
     }
   }
@@ -99,11 +96,9 @@ export class CredentialManager {
         lastSync: Date.now(),
         credentialsVersion: '1.0' // For future migration support
       });
-      
-      console.log('Credentials stored securely');
+
       return { success: true };
     } catch (error) {
-      console.error('Failed to store credentials:', error);
       return { success: false, error: error.message };
     }
   }
@@ -125,10 +120,9 @@ export class CredentialManager {
       } else {
         // Try legacy unencrypted storage for migration
         const legacyResult = await chrome.storage.local.get(['canvasToken', 'notionToken', 'notionDatabaseId', 'lastSync']);
-        
+
         if (legacyResult.canvasToken || legacyResult.notionToken || legacyResult.notionDatabaseId) {
           // Migrate to encrypted storage
-          console.log('Migrating legacy credentials to encrypted storage');
           await this.storeCredentials(
             legacyResult.canvasToken,
             legacyResult.notionToken,
@@ -144,15 +138,11 @@ export class CredentialManager {
         return {};
       }
     } catch (error) {
-      console.error('Failed to retrieve credentials:', error);
       // If decryption fails, try legacy storage
-      console.warn('Credential decryption failed, trying legacy storage');
-      
       try {
         const legacyResult = await chrome.storage.local.get(['canvasToken', 'notionToken', 'notionDatabaseId', 'lastSync']);
         return legacyResult;
       } catch (legacyError) {
-        console.error('Legacy credential retrieval also failed:', legacyError);
         return {};
       }
     }
@@ -163,7 +153,6 @@ export class CredentialManager {
       await chrome.storage.local.clear();
       return { success: true };
     } catch (error) {
-      console.error('Failed to clear credentials:', error);
       return { success: false, error: error.message };
     }
   }
