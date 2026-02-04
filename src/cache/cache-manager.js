@@ -196,7 +196,7 @@ export class CacheManager {
 
       await chrome.storage.local.set({ [this.storageKey]: serialized });
     } catch (error) {
-      console.error('Failed to persist cache:', error);
+      console.error('Failed to persist cache:', error.message);
     }
   }
 
@@ -225,7 +225,7 @@ export class CacheManager {
         console.log(`✅ Loaded ${loadedCount} cache entries from storage`);
       }
     } catch (error) {
-      console.error('Failed to load persistent cache:', error);
+      console.error('Failed to load persistent cache:', error.message);
     }
   }
 
