@@ -19,10 +19,11 @@ export class AssignmentSyncer {
       
       // Use the first data source
       this.dataSourceId = database.data_sources[0].id;
-      
+
+
       return { success: true, dataSourceId: this.dataSourceId };
     } catch (error) {
-      console.error('Failed to initialize syncer:', error);
+      console.error('Failed to initialize syncer:', error.message);
       throw error;
     }
   }
@@ -200,7 +201,7 @@ export class AssignmentSyncer {
           return { action: 'created', assignment: assignment.title, result };
         }
       } catch (error) {
-        console.error('Error syncing assignment:', assignment.title, error);
+        console.error('Error syncing assignment:', assignment.title, error.message);
         return { action: 'error', assignment: assignment.title, error: error.message };
       }
     });
@@ -242,8 +243,8 @@ export class AssignmentSyncer {
           await new Promise(resolve => setTimeout(resolve, batchDelay));
         }
       } catch (error) {
-        console.error(`❌ Batch ${batchNumber} failed:`, error);
-        
+        console.error(`❌ Batch ${batchNumber} failed:`, error.message);
+
         // Process this batch sequentially as fallback
         console.log(`🔄 Falling back to sequential processing for batch ${batchNumber}...`);
         for (const promise of batch) {
