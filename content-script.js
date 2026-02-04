@@ -8,6 +8,7 @@ class CanvasAPIExtractor {
   constructor() {
     this.canvasToken = null;
     this.baseURL = null;
+    this.forceRefresh = false;
     this.setupMessageListener();
     this.detectCanvasInstance();
   }
@@ -16,6 +17,7 @@ class CanvasAPIExtractor {
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       switch(request.type) {
         case 'EXTRACT_ASSIGNMENTS':
+          this.forceRefresh = request.forceRefresh || false;
           this.extractAssignments()
             .then(assignments => sendResponse({ success: true, assignments }))
             .catch(error => sendResponse({ success: false, error: error.message }));
@@ -59,25 +61,88 @@ class CanvasAPIExtractor {
   }
 
   async extractWithAPIToken() {
-    
+
     try {
-      // Get all courses for the user
-      const courses = await this.makeAPICall('/courses', {
-        'enrollment_state': 'active',
-        'per_page': 100
-      });
+      // Try to get cached courses first
+      let courses = null;
+      if (!this.forceRefresh) {
+        try {
+          const cacheResponse = await chrome.runtime.sendMessage({
+            action: 'GET_CANVAS_CACHE',
+            key: 'canvas:courses:list'
+          });
+          if (cacheResponse?.data) {
+            courses = cacheResponse.data;
+            console.log('✅ Using cached courses');
+          }
+        } catch (error) {
+          // Cache unavailable, will fetch fresh
+        }
+      }
+
+      // Fetch fresh if no cache or force refresh
+      if (!courses) {
+        courses = await this.makeAPICall('/courses', {
+          'enrollment_state': 'active',
+          'per_page': 100
+        });
+
+        // Cache the courses
+        try {
+          await chrome.runtime.sendMessage({
+            action: 'SET_CANVAS_CACHE',
+            key: 'canvas:courses:list',
+            data: courses,
+            ttl: 10 * 60 * 1000 // 10 minutes
+          });
+        } catch (error) {
+          // Cache storage failed, non-critical
+        }
+      }
 
 
       // Get assignments from all courses
       const allAssignments = [];
-      
+
       for (const course of courses) {
         try {
-          const assignments = await this.makeAPICall(`/courses/${course.id}/assignments`, {
-            'per_page': 100,
-            'order_by': 'due_at',
-            'include': 'submission'
-          });
+          // Try to get cached assignments first
+          let assignments = null;
+          if (!this.forceRefresh) {
+            try {
+              const cacheResponse = await chrome.runtime.sendMessage({
+                action: 'GET_CANVAS_CACHE',
+                key: `canvas:course:${course.id}:assignments`
+              });
+              if (cacheResponse?.data) {
+                assignments = cacheResponse.data;
+                console.log(`✅ Using cached assignments for course ${course.id}`);
+              }
+            } catch (error) {
+              // Cache unavailable, will fetch fresh
+            }
+          }
+
+          // Fetch fresh if no cache or force refresh
+          if (!assignments) {
+            assignments = await this.makeAPICall(`/courses/${course.id}/assignments`, {
+              'per_page': 100,
+              'order_by': 'due_at',
+              'include': 'submission'
+            });
+
+            // Cache the assignments
+            try {
+              await chrome.runtime.sendMessage({
+                action: 'SET_CANVAS_CACHE',
+                key: `canvas:course:${course.id}:assignments`,
+                data: assignments,
+                ttl: 5 * 60 * 1000 // 5 minutes
+              });
+            } catch (error) {
+              // Cache storage failed, non-critical
+            }
+          }
 
 
           // Transform to our format and fetch grades
@@ -172,6 +237,20 @@ class CanvasAPIExtractor {
         method: 'GET',
         headers: headers,
         credentials: 'include'
+      });
+
+      // Extract rate limit headers
+      const rateLimitInfo = {
+        remaining: response.headers.get('X-Rate-Limit-Remaining'),
+        cost: response.headers.get('X-Request-Cost')
+      };
+
+      // Send to background for caching
+      chrome.runtime.sendMessage({
+        action: 'UPDATE_RATE_LIMIT',
+        info: rateLimitInfo
+      }).catch(() => {
+        // Ignore errors - rate limit tracking is non-critical
       });
 
       if (!response.ok) {
