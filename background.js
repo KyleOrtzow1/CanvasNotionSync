@@ -21,7 +21,5 @@ setupSecurityHandlers();
   // Cleanup expired entries on startup
   canvasCache.cleanupExpired();
   notionCache.cleanupExpired();
-
-  console.log('✅ Cache managers initialized');
 })();
 

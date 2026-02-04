@@ -38,7 +38,6 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
     if (forceRefresh) {
       const canvasCache = getCanvasCache();
       await canvasCache.invalidateOnManualSync();
-      console.log('🗑️ Caches invalidated for manual sync');
     }
 
     const credentials = await CredentialManager.getCredentials();

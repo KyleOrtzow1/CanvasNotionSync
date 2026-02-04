@@ -16,6 +16,8 @@ const results = {
 
 function checkCachingImplementation() {
   const bgPath = path.join(process.cwd(), 'background.js');
+  const cacheManagerPath = path.join(process.cwd(), 'src', 'cache', 'cache-manager.js');
+  const canvasCachePath = path.join(process.cwd(), 'src', 'cache', 'canvas-cache-manager.js');
 
   if (!fs.existsSync(bgPath)) {
     results.passed = false;
@@ -26,7 +28,15 @@ function checkCachingImplementation() {
     return;
   }
 
-  const content = fs.readFileSync(bgPath, 'utf8');
+  let content = fs.readFileSync(bgPath, 'utf8');
+
+  // Also read cache manager files if they exist
+  if (fs.existsSync(cacheManagerPath)) {
+    content += '\n' + fs.readFileSync(cacheManagerPath, 'utf8');
+  }
+  if (fs.existsSync(canvasCachePath)) {
+    content += '\n' + fs.readFileSync(canvasCachePath, 'utf8');
+  }
 
   // Check for cache classes
   if (content.match(/class\s+\w*Cache/)) {

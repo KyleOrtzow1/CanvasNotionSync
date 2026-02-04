@@ -73,7 +73,6 @@ class CanvasAPIExtractor {
           });
           if (cacheResponse?.data) {
             courses = cacheResponse.data;
-            console.log('✅ Using cached courses');
           }
         } catch (error) {
           // Cache unavailable, will fetch fresh
@@ -116,7 +115,6 @@ class CanvasAPIExtractor {
               });
               if (cacheResponse?.data) {
                 assignments = cacheResponse.data;
-                console.log(`✅ Using cached assignments for course ${course.id}`);
               }
             } catch (error) {
               // Cache unavailable, will fetch fresh
