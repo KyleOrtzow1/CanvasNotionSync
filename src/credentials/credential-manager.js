@@ -1,79 +1,67 @@
 // Encrypted storage and credential management
 export class CredentialManager {
   static async generateEncryptionKey() {
-    try {
-      // Try to get existing key from storage
-      const { encryptionKey } = await chrome.storage.local.get(['encryptionKey']);
-      
-      if (encryptionKey) {
-        // Import the existing key
-        return await crypto.subtle.importKey(
-          'raw',
-          new Uint8Array(encryptionKey),
-          { name: 'AES-GCM' },
-          false,
-          ['encrypt', 'decrypt']
-        );
-      } else {
-        // Generate a new key
-        const key = await crypto.subtle.generateKey(
-          { name: 'AES-GCM', length: 256 },
-          true,
-          ['encrypt', 'decrypt']
-        );
-        
-        // Export and store the key
-        const exportedKey = await crypto.subtle.exportKey('raw', key);
-        await chrome.storage.local.set({ 
-          encryptionKey: Array.from(new Uint8Array(exportedKey))
-        });
-        
-        return key;
-      }
-    } catch (error) {
-      throw error;
+    // Try to get existing key from storage
+    const { encryptionKey } = await chrome.storage.local.get(['encryptionKey']);
+
+    if (encryptionKey) {
+      // Import the existing key
+      return await crypto.subtle.importKey(
+        'raw',
+        new Uint8Array(encryptionKey),
+        { name: 'AES-GCM' },
+        false,
+        ['encrypt', 'decrypt']
+      );
+    } else {
+      // Generate a new key
+      const key = await crypto.subtle.generateKey(
+        { name: 'AES-GCM', length: 256 },
+        true,
+        ['encrypt', 'decrypt']
+      );
+
+      // Export and store the key
+      const exportedKey = await crypto.subtle.exportKey('raw', key);
+      await chrome.storage.local.set({
+        encryptionKey: Array.from(new Uint8Array(exportedKey))
+      });
+
+      return key;
     }
   }
 
   static async encryptData(data, key) {
-    try {
-      const iv = crypto.getRandomValues(new Uint8Array(12));
-      const encodedData = new TextEncoder().encode(JSON.stringify(data));
-      
-      const encrypted = await crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv: iv },
-        key,
-        encodedData
-      );
-      
-      // Combine IV and encrypted data
-      const combined = new Uint8Array(iv.length + encrypted.byteLength);
-      combined.set(iv);
-      combined.set(new Uint8Array(encrypted), iv.length);
-      
-      return Array.from(combined);
-    } catch (error) {
-      throw error;
-    }
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encodedData = new TextEncoder().encode(JSON.stringify(data));
+
+    const encrypted = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv: iv },
+      key,
+      encodedData
+    );
+
+    // Combine IV and encrypted data
+    const combined = new Uint8Array(iv.length + encrypted.byteLength);
+    combined.set(iv);
+    combined.set(new Uint8Array(encrypted), iv.length);
+
+    return Array.from(combined);
   }
 
   static async decryptData(encryptedArray, key) {
-    try {
-      const combined = new Uint8Array(encryptedArray);
-      const iv = combined.slice(0, 12);
-      const encrypted = combined.slice(12);
-      
-      const decrypted = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv: iv },
-        key,
-        encrypted
-      );
-      
-      const decodedData = new TextDecoder().decode(decrypted);
-      return JSON.parse(decodedData);
-    } catch (error) {
-      throw error;
-    }
+    const combined = new Uint8Array(encryptedArray);
+    const iv = combined.slice(0, 12);
+    const encrypted = combined.slice(12);
+
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: iv },
+      key,
+      encrypted
+    );
+
+    const decodedData = new TextDecoder().decode(decrypted);
+    return JSON.parse(decodedData);
   }
 
   static async storeCredentials(canvasToken, notionToken, notionDatabaseId) {

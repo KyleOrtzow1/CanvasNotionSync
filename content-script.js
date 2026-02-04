@@ -1,8 +1,7 @@
 // Canvas-Notion Sync: API-Only Assignment Extractor
 
 // Prevent multiple initialization
-if (window.canvasNotionExtractorLoaded) {
-} else {
+if (!window.canvasNotionExtractorLoaded) {
   window.canvasNotionExtractorLoaded = true;
 
 class CanvasAPIExtractor {
@@ -110,6 +109,7 @@ class CanvasAPIExtractor {
                 }
                 submissionStatus = this.getSubmissionStatus(submission);
               } catch (error) {
+                // Submission not available - will use default status
               }
             }
 

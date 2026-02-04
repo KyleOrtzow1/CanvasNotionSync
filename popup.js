@@ -115,6 +115,7 @@ document.addEventListener('DOMContentLoaded', function() {
               });
             }
           } catch (error) {
+            // Failed to query Canvas tabs - extension may not be injected yet
           }
         }
         
@@ -272,12 +273,11 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Use the total assignment count from background sync
         const totalAssignments = syncResult.assignmentCount || 0;
-        
+
         // Ensure results is an array before filtering
         const results = Array.isArray(syncResult.results) ? syncResult.results : [];
-        const successCount = results.filter(r => r.action !== 'error').length;
         const errorCount = results.filter(r => r.action === 'error').length;
-        
+
         updateSyncProgress('complete', 100, `Synced ${totalAssignments} assignments!`);
         
         // Brief pause to show completion
