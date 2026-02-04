@@ -1,0 +1,70 @@
+name: Security Checks
+
+on:
+  push:
+    branches: [ main, develop, feature/* ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  security-audit:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: Install dependencies
+      run: |
+        npm install --save-dev \
+          eslint \
+          eslint-plugin-security \
+          eslint-plugin-no-secrets \
+          @eslint/js
+
+    - name: Run ESLint Security Checks
+      run: npx eslint . --ext .js --config .eslintrc.security.json
+      continue-on-error: false
+
+    - name: Check for hardcoded credentials
+      run: node .github/scripts/check-credentials.js
+
+    - name: Check for console.log statements
+      run: node .github/scripts/check-console-logs.js
+
+    - name: Verify encryption implementation
+      run: node .github/scripts/verify-encryption.js
+
+    - name: Check manifest.json permissions
+      run: node .github/scripts/check-permissions.js
+
+    - name: Scan for dangerous functions
+      run: node .github/scripts/check-dangerous-functions.js
+
+    - name: Verify HTTPS usage
+      run: node .github/scripts/check-https.js
+
+    - name: Check CSP configuration
+      run: node .github/scripts/check-csp.js
+
+    - name: Verify rate limiting
+      run: node .github/scripts/check-rate-limiting.js
+
+    - name: Check error message sanitization
+      run: node .github/scripts/check-error-messages.js
+
+    - name: Generate Security Report
+      if: always()
+      run: node .github/scripts/generate-security-report.js
+
+    - name: Upload Security Report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-report
+        path: security-report.json

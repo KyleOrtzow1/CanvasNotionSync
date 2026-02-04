@@ -1,5 +1,3 @@
-import { NotionAPI } from '../api/notion-api.js';
-
 // Assignment synchronization logic
 export class AssignmentSyncer {
   constructor(notionAPI, databaseId) {
@@ -215,8 +213,7 @@ export class AssignmentSyncer {
     // Track success metrics
     let successCount = 0;
     let errorCount = 0;
-    let retryCount = 0;
-    
+
     console.log(`🚀 Starting sync: ${promises.length} assignments in ${totalBatches} batches of ${batchSize}`);
     
     for (let i = 0; i < promises.length; i += batchSize) {
