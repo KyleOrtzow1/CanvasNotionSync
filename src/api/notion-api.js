@@ -187,11 +187,14 @@ export class NotionAPI {
           }
         }
         
-        // Handle 429 rate limits
+        // Handle 429 rate limits with exponential backoff + Retry-After
         if (error.status === 429) {
-          const delay = error.retryAfter || 1000;
-          console.log(`⚠️ ${operationType} rate limited (429) on attempt ${attempt}/${maxRetries}, retrying in ${delay}ms...`);
-          
+          const retryAfterDelay = error.retryAfter || 1000;
+          const exponentialDelay = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s, 8s, 16s
+          const delay = Math.max(retryAfterDelay, exponentialDelay);
+
+          console.log(`⚠️ ${operationType} rate limited (429) on attempt ${attempt}/${maxRetries}, retrying in ${delay}ms (Retry-After: ${retryAfterDelay}ms, exponential: ${exponentialDelay}ms)...`);
+
           if (attempt < maxRetries) {
             await new Promise(resolve => setTimeout(resolve, delay));
             continue;

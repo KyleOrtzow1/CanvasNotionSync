@@ -61,10 +61,25 @@ export class NotionRateLimiter {
         resolve(result);
       } catch (error) {
         if (error.message.includes('rate_limited') || error.status === 429) {
-          // Handle 429 rate limit with exponential backoff
-          const retryAfter = error.retryAfter || 1000;
-          await this.delay(retryAfter);
-          this.requestQueue.unshift({ requestFunction, resolve, reject });
+          // Track retry attempts for this request
+          const currentAttempt = (error.rateLimitAttempt || 0) + 1;
+
+          // Handle 429 with exponential backoff + Retry-After
+          const retryAfterDelay = error.retryAfter || 1000;
+          const exponentialDelay = Math.pow(2, currentAttempt) * 1000; // 2s, 4s, 8s, 16s...
+          const finalDelay = Math.max(retryAfterDelay, exponentialDelay);
+
+          console.log(`⚠️ Rate limited (429), attempt ${currentAttempt}, waiting ${finalDelay}ms (Retry-After: ${retryAfterDelay}ms, exponential: ${exponentialDelay}ms)`);
+
+          // Max 5 retry attempts for rate limits
+          if (currentAttempt >= 5) {
+            console.error('❌ Max rate limit retries reached (5 attempts)');
+            reject(error);
+          } else {
+            await this.delay(finalDelay);
+            error.rateLimitAttempt = currentAttempt;
+            this.requestQueue.unshift({ requestFunction, resolve, reject });
+          }
         } else {
           reject(error);
         }
