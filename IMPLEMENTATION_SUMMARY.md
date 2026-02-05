@@ -22,13 +22,6 @@ Unified cache manager that stores both Canvas data and Notion mappings:
   - `cleanupInactiveCourses()` - Deletion detection logic
   - `getBatch()` - Batch retrieval for performance
 
-#### `src/cache/cache-migrator.js` (100 lines)
-Automatic migration from old cache format:
-- Checks `cache_version` in chrome.storage.local
-- Transforms old `notion:lookup:{id}` → `assignment:{id}` format
-- Preserves Notion page IDs during migration
-- Cleans up old cache keys after success
-- Runs on extension startup
 
 ### 2. Major Rewrites
 
@@ -87,7 +80,6 @@ Handles edge cases:
 - `CLEAR_CACHE` clears unified cache
 
 #### `background.js`
-- Added migration call on startup: `await CacheMigrator.migrate()`
 - Replaced dual cache initialization with single `AssignmentCacheManager`
 - Removed Canvas rate limit monitoring (handled internally now)
 
@@ -112,7 +104,7 @@ Removed old cache system completely:
 - Removed old Canvas/Notion cache tests
 - Added comprehensive `AssignmentCacheManager` tests
 - Tests cover: caching, field comparison, batch retrieval, deletion detection
-- **Result:** ✅ All 30 tests passing
+- **Result:** ✅ All tests passing
 
 ## Performance Improvements
 
@@ -137,37 +129,17 @@ Removed old cache system completely:
 - **Cache persistence** across browser restarts
 - **Deletion handling** prevents orphaned pages
 
-## Migration Process
+## Cache Initialization
 
-### Automatic on Extension Load
+On extension startup, the assignment cache is loaded from `chrome.storage.local`:
 ```javascript
 // background.js startup
-await CacheMigrator.migrate()
-// Checks cache_version, runs migrations, sets version to 1
+const assignmentCache = getAssignmentCache();
+await assignmentCache.loadPersistentCache();
+assignmentCache.cleanupExpired();
 ```
 
-### Migration Steps
-1. Check `cache_version` in chrome.storage.local
-2. If version < 1:
-   - Load old `notion_lookup_cache`
-   - Transform: `notion:lookup:123` → `assignment:123`
-   - Preserve `notionPageId`, set `canvasData: null`
-   - Save to `assignment_cache`
-   - Delete old cache keys
-   - Set `cache_version: 1`
-3. Load and initialize `AssignmentCacheManager`
-
-### Rollback Strategy
-If critical issues arise:
-```javascript
-// 1. Revert to previous git commit
-git checkout <previous-commit>
-
-// 2. Clear new cache
-await chrome.storage.local.remove(['assignment_cache', 'cache_version'])
-
-// 3. Extension will rebuild from Notion data
-```
+**Note:** Users upgrading from the old cache system will start with a fresh cache. The first sync after upgrade will query all assignments from Notion to populate the cache.
 
 ## Deletion Handling
 
@@ -224,7 +196,6 @@ $ node -c src/cache/cache-migrator.js
 - ✅ Single Responsibility: Each class has clear purpose
 - ✅ DRY: Base `CacheManager` reused, no duplication
 - ✅ Testability: All new code has unit tests
-- ✅ Backwards Compatibility: Migration handles existing data
 - ✅ Error Handling: Graceful failures, retry logic
 
 ## Known Limitations
@@ -233,9 +204,9 @@ $ node -c src/cache/cache-migrator.js
    - Sufficient for 10+ courses with 50 assignments each
    - Oldest accessed entries evicted first
 
-2. **Migration:** One-way only
-   - Cannot downgrade to old cache system
-   - Rollback requires git revert
+2. **First sync after upgrade:** Users will start with fresh cache
+   - First sync queries all assignments from Notion
+   - Subsequent syncs benefit from cache
 
 3. **Deletion detection:** Requires active course list
    - If Canvas API fails, deletions not detected
@@ -261,10 +232,8 @@ Track these metrics in production:
 
 - ✅ All tests passing
 - ✅ No syntax errors
-- ✅ Migration logic tested
 - ✅ Old files deleted
 - ✅ All imports updated
-- ✅ Backwards compatibility maintained
 - ✅ Documentation complete
 - ✅ Memory file updated
 
@@ -275,7 +244,7 @@ The unified cache system is **production-ready** and delivers significant perfor
 - **70-80% fewer API calls** through intelligent field comparison
 - **30-day cache TTL** eliminates frequent re-fetching
 - **Deletion handling** keeps Notion in sync with Canvas
-- **Automatic migration** ensures seamless upgrade
+- **Fresh start on upgrade** - first sync populates cache from Notion
 - **Full test coverage** validates correctness
 
 Users will experience **much faster syncs** and **reduced API quota usage**, while maintaining data accuracy and preserving manual workflow tracking.
