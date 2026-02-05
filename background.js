@@ -2,7 +2,8 @@
 
 // Import all modules
 import { setupMessageHandlers } from './src/handlers/message-handlers.js';
-import { setupNavigationHandlers, setupPeriodicSync, setupSecurityHandlers, getCanvasCache, getNotionCache } from './src/handlers/background-handlers.js';
+import { setupNavigationHandlers, setupPeriodicSync, setupSecurityHandlers, getAssignmentCache } from './src/handlers/background-handlers.js';
+import { CacheMigrator } from './src/cache/cache-migrator.js';
 
 // Initialize all handlers
 setupMessageHandlers();
@@ -10,28 +11,16 @@ setupNavigationHandlers();
 setupPeriodicSync();
 setupSecurityHandlers();
 
-// Initialize caches and cleanup expired entries
+// Initialize cache and run migration
 (async () => {
-  const canvasCache = getCanvasCache();
-  const notionCache = getNotionCache();
+  // Run cache migration first
+  await CacheMigrator.migrate();
+  console.log('✅ Cache migration complete');
 
-  // Load persistent cache from storage
-  await notionCache.loadPersistentCache();
-
-  // Cleanup expired entries on startup
-  canvasCache.cleanupExpired();
-  notionCache.cleanupExpired();
+  // Initialize and load assignment cache
+  const assignmentCache = getAssignmentCache();
+  await assignmentCache.loadPersistentCache();
+  assignmentCache.cleanupExpired();
+  console.log('✅ Assignment cache loaded');
 })();
-
-// Canvas rate limit monitoring - Monitor X-Rate-Limit-Remaining and X-Request-Cost
-function checkCanvasRateLimit() {
-  const canvasCache = getCanvasCache();
-  const rateLimitInfo = canvasCache.getRateLimitInfo();
-
-  // Check Canvas API rate limits using X-Rate-Limit-Remaining and X-Request-Cost headers
-  // Rate limit info is returned for monitoring purposes
-  return rateLimitInfo;
-}
-
-export { checkCanvasRateLimit };
 

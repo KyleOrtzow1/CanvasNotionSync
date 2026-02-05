@@ -128,12 +128,51 @@ export class NotionAPI {
     return await rateLimiter.execute(requestFunction);
   }
 
-  async updatePage(pageId, properties) {
+  // Get page by ID
+  async getPage(pageId) {
     const requestFunction = async () => {
+      const response = await fetch(`${this.baseURL}/pages/${pageId}`, {
+        method: 'GET',
+        headers: this.headers
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        const error = new Error(`Notion API error: ${response.status} - ${errorText}`);
+        error.status = response.status;
+
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After');
+          if (retryAfter) {
+            error.retryAfter = parseInt(retryAfter) * 1000;
+          }
+        }
+
+        throw error;
+      }
+
+      return await response.json();
+    };
+
+    if (this.bypassRateLimit) {
+      return await requestFunction();
+    }
+    return await rateLimiter.execute(requestFunction);
+  }
+
+  async updatePage(pageId, properties, options = {}) {
+    const requestFunction = async () => {
+      const body = { properties: properties };
+
+      // Support archiving pages
+      if (options.archived !== undefined) {
+        body.archived = options.archived;
+      }
+
       const response = await fetch(`${this.baseURL}/pages/${pageId}`, {
         method: 'PATCH',
         headers: this.headers,
-        body: JSON.stringify({ properties: properties })
+        body: JSON.stringify(body)
       });
 
       if (!response.ok) {

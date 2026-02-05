@@ -1,43 +1,31 @@
 import { CredentialManager } from '../credentials/credential-manager.js';
 import { NotionAPI } from '../api/notion-api.js';
 import { AssignmentSyncer } from '../sync/assignment-syncer.js';
-import { CanvasCacheManager } from '../cache/canvas-cache-manager.js';
-import { NotionCacheManager } from '../cache/notion-cache-manager.js';
+import { AssignmentCacheManager } from '../cache/assignment-cache-manager.js';
 
-// Cache manager singleton instances
-let canvasCacheInstance = null;
-let notionCacheInstance = null;
+// Cache manager singleton instance
+let assignmentCacheInstance = null;
 
 /**
- * Get singleton Canvas cache instance
- * @returns {CanvasCacheManager}
+ * Get singleton assignment cache instance
+ * @returns {AssignmentCacheManager}
  */
-export function getCanvasCache() {
-  if (!canvasCacheInstance) {
-    canvasCacheInstance = new CanvasCacheManager();
+export function getAssignmentCache() {
+  if (!assignmentCacheInstance) {
+    assignmentCacheInstance = new AssignmentCacheManager();
   }
-  return canvasCacheInstance;
-}
-
-/**
- * Get singleton Notion cache instance
- * @returns {NotionCacheManager}
- */
-export function getNotionCache() {
-  if (!notionCacheInstance) {
-    notionCacheInstance = new NotionCacheManager();
-  }
-  return notionCacheInstance;
+  return assignmentCacheInstance;
 }
 
 export async function handleBackgroundSync(canvasToken, options = {}) {
   try {
     const forceRefresh = options.forceRefresh || false;
 
-    // Invalidate caches on manual sync with force refresh
+    // Clear cache on force refresh
     if (forceRefresh) {
-      const canvasCache = getCanvasCache();
-      await canvasCache.invalidateOnManualSync();
+      const assignmentCache = getAssignmentCache();
+      await assignmentCache.clearAll();
+      console.log('🔄 Cache cleared due to force refresh');
     }
 
     const credentials = await CredentialManager.getCredentials();
@@ -112,9 +100,10 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
       return { success: true, results: [], assignmentCount: 0, message: 'No assignments found to sync' };
     }
 
-    // Sync the extracted assignments
-    const results = await handleAssignmentSync(response.assignments);
-    
+    // Sync the extracted assignments with active course IDs for deletion detection
+    const activeCourseIds = response.activeCourseIds || [];
+    const results = await handleAssignmentSync(response.assignments, activeCourseIds);
+
     // Update last sync time
     await chrome.storage.local.set({ lastSync: Date.now() });
 
@@ -127,7 +116,7 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
   }
 }
 
-export async function handleAssignmentSync(assignments) {
+export async function handleAssignmentSync(assignments, activeCourseIds = []) {
   try {
     const credentials = await CredentialManager.getCredentials();
 
@@ -137,21 +126,20 @@ export async function handleAssignmentSync(assignments) {
 
     const notionAPI = new NotionAPI(credentials.notionToken, { bypassRateLimit: true });
 
-    // Pass cache to syncer
-    const notionCache = getNotionCache();
-    const syncer = new AssignmentSyncer(notionAPI, credentials.notionDatabaseId, notionCache);
-    
-    const results = await syncer.syncAssignments(assignments);
-    
+    // Pass unified cache to syncer
+    const assignmentCache = getAssignmentCache();
+    const syncer = new AssignmentSyncer(notionAPI, credentials.notionDatabaseId, assignmentCache);
+
+    const results = await syncer.syncAssignments(assignments, activeCourseIds);
+
     // Update last sync time
     await chrome.storage.local.set({ lastSync: Date.now() });
-    
-    // Show notification
-    const successCount = results.filter(r => r.action !== 'error').length;
-    showNotification(
-      'Sync Complete', 
-      `Synced ${successCount} assignments to Notion`
-    );
+
+    // Show notification with detailed stats
+    const total = results.created.length + results.updated.length + results.skipped.length;
+    const message = `Created: ${results.created.length}, Updated: ${results.updated.length}, Skipped: ${results.skipped.length}`;
+
+    showNotification('Sync Complete', message);
 
     return results;
   } catch (error) {

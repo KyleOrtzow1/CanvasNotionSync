@@ -1,9 +1,9 @@
-// Assignment synchronization logic
+// Assignment synchronization logic with unified cache system
 export class AssignmentSyncer {
-  constructor(notionAPI, databaseId, notionCache = null) {
+  constructor(notionAPI, databaseId, assignmentCache = null) {
     this.notionAPI = notionAPI;
     this.databaseId = databaseId;
-    this.notionCache = notionCache;
+    this.assignmentCache = assignmentCache;
     this.dataSourceId = null;
   }
 
@@ -83,228 +83,215 @@ export class AssignmentSyncer {
     return properties;
   }
 
-  // REMOVED: syncAssignment - replaced with batch processing in syncAssignments
-
-  async syncAssignments(assignments) {
+  /**
+   * Main sync method implementing the unified cache algorithm
+   * @param {Array} assignments - Canvas assignments to sync
+   * @param {Array<string>} activeCourseIds - Currently active Canvas course IDs
+   * @returns {Object} Sync results with statistics
+   */
+  async syncAssignments(assignments, activeCourseIds = []) {
     // Initialize once before syncing
     if (!this.dataSourceId) {
       await this.initialize();
     }
 
-    console.log(`🔍 Starting duplicate prevention lookup for ${assignments.length} assignments from Canvas`);
+    console.log(`\n🔄 Starting unified cache sync for ${assignments.length} Canvas assignments`);
 
-    // Build lookup map by querying each Canvas ID individually
-    // This ensures we find all existing assignments, avoiding duplicates
-    const existingAssignments = new Map();
+    // Step 1: Set active courses for deletion detection
+    if (this.assignmentCache && activeCourseIds.length > 0) {
+      this.assignmentCache.setActiveCourses(activeCourseIds);
+      console.log(`📚 Tracking ${activeCourseIds.length} active courses`);
+    }
 
-    // Get all Canvas IDs we need to check
-    const canvasIds = assignments
-      .filter(a => a.canvasId)
-      .map(a => a.canvasId.toString());
+    // Step 2: Build Canvas assignment map
+    const canvasAssignmentMap = new Map();
+    const canvasIds = [];
 
-    console.log(`📋 Canvas IDs to check: ${canvasIds.length}`);
-
-    if (canvasIds.length > 0) {
-      // Check cache first
-      let cachedLookups = new Map();
-      let uncachedIds = canvasIds;
-
-      if (this.notionCache) {
-        cachedLookups = await this.notionCache.getCachedLookupBatch(canvasIds);
-        uncachedIds = canvasIds.filter(id => !cachedLookups.has(id));
-
-        console.log(`📊 Cache hit: ${cachedLookups.size}/${canvasIds.length} lookups (${uncachedIds.length} need API query)`);
-
-        // Merge cached results
-        for (const [canvasId, page] of cachedLookups) {
-          existingAssignments.set(canvasId, page);
-        }
-      }
-
-      // Only query uncached IDs
-      if (uncachedIds.length > 0) {
-        const lookupBatchSize = 5;
-        let foundCount = 0;
-
-        for (let i = 0; i < uncachedIds.length; i += lookupBatchSize) {
-          const batchIds = uncachedIds.slice(i, i + lookupBatchSize);
-          const batchNumber = Math.floor(i / lookupBatchSize) + 1;
-          const totalLookupBatches = Math.ceil(uncachedIds.length / lookupBatchSize);
-
-          console.log(`🔎 Lookup batch ${batchNumber}/${totalLookupBatches}: Checking ${batchIds.length} Canvas IDs`);
-
-          // Query each ID in this batch
-          const lookupPromises = batchIds.map(async (canvasId) => {
-            try {
-              const result = await this.notionAPI.queryDataSource(this.dataSourceId, {
-                property: 'Canvas ID',
-                rich_text: {
-                  equals: canvasId  // Specific filter - finds exact match
-                }
-              });
-
-              // Store the first result (should only be one per Canvas ID)
-              if (result.results && result.results.length > 0) {
-                const page = result.results[0];
-
-                // Cache the lookup result
-                if (this.notionCache) {
-                  await this.notionCache.cacheLookup(canvasId, page);
-                }
-
-                existingAssignments.set(canvasId, page);
-                return { canvasId, found: true };
-              }
-              return { canvasId, found: false };
-            } catch (error) {
-              console.warn(`Failed to query Canvas ID ${canvasId}:`, error.message);
-              return { canvasId, found: false, error: true };
-            }
-          });
-
-          const batchResults = await Promise.all(lookupPromises);
-          const batchFoundCount = batchResults.filter(r => r.found).length;
-          foundCount += batchFoundCount;
-
-          console.log(`✅ Lookup batch ${batchNumber} complete: ${batchFoundCount}/${batchIds.length} found in Notion`);
-
-          // Small delay between lookup batches
-          if (i + lookupBatchSize < uncachedIds.length) {
-            await new Promise(resolve => setTimeout(resolve, 100));
-          }
-        }
-
-        const totalFoundCount = foundCount + cachedLookups.size;
-        console.log(`\n📊 Lookup complete: ${totalFoundCount}/${canvasIds.length} assignments already exist in Notion`);
-        console.log(`   ➕ Will create: ${canvasIds.length - totalFoundCount} new assignments`);
-        console.log(`   🔄 Will update: ${totalFoundCount} existing assignments\n`);
-      } else {
-        console.log(`\n📊 All lookups served from cache! ${cachedLookups.size}/${canvasIds.length} assignments already exist in Notion`);
-        console.log(`   ➕ Will create: ${canvasIds.length - cachedLookups.size} new assignments`);
-        console.log(`   🔄 Will update: ${cachedLookups.size} existing assignments\n`);
+    for (const assignment of assignments) {
+      if (assignment.canvasId) {
+        const canvasId = assignment.canvasId.toString();
+        canvasAssignmentMap.set(canvasId, assignment);
+        canvasIds.push(canvasId);
       }
     }
-    
-    // Process assignments with reduced API calls
-    const promises = assignments.map(async (assignment) => {
+
+    console.log(`📋 Processing ${canvasIds.length} assignments with Canvas IDs`);
+
+    // Step 3: Process each assignment with field-level change detection
+    const results = {
+      created: [],
+      updated: [],
+      skipped: [],
+      deleted: [],
+      errors: []
+    };
+
+    for (const [canvasId, assignment] of canvasAssignmentMap.entries()) {
       try {
-        const existing = existingAssignments.get(assignment.canvasId?.toString());
+        // Check cache and compare fields
+        const comparison = this.assignmentCache
+          ? await this.assignmentCache.compareAndNeedsUpdate(canvasId, assignment)
+          : { needsUpdate: true, changedFields: [], cachedEntry: null };
+
         const properties = this.formatAssignmentProperties(assignment);
 
-        if (existing) {
-          // Check if existing assignment has "In Progress" status
-          const existingStatus = existing.properties?.Status?.select?.name;
-          const newStatus = assignment.status;
-          
-          // If existing status is "In Progress", only update if new status is "Submitted" or "Graded"
-          if (existingStatus === 'In Progress' && 
-              newStatus !== 'Submitted' && 
-              newStatus !== 'Graded') {
-            // Preserve the "In Progress" status
-            if (properties.Status) {
-              properties.Status = {
-                select: { name: 'In Progress' }
-              };
-            }
-          }
-          
-          // If existing status is "Submitted", only update if new status is "Graded"
-          if (existingStatus === 'Submitted' && 
-              newStatus !== 'Graded') {
-            // Preserve the "Submitted" status
-            if (properties.Status) {
-              properties.Status = {
-                select: { name: 'Submitted' }
-              };
-            }
-          }
-          
-          // Update existing assignment
-          const result = await this.notionAPI.updatePage(existing.id, properties);
-          return { action: 'updated', assignment: assignment.title, result };
-        } else {
-          // Create new assignment
+        if (!comparison.cachedEntry) {
+          // New assignment - create in Notion
+          console.log(`➕ Creating new assignment: ${assignment.title}`);
           const result = await this.notionAPI.createPage(this.dataSourceId, properties);
-          return { action: 'created', assignment: assignment.title, result };
-        }
-      } catch (error) {
-        console.error('Error syncing assignment:', assignment.title, error.message);
-        return { action: 'error', assignment: assignment.title, error: error.message };
-      }
-    });
 
-    // Process assignments in controlled batches for 100% success rate
-    const results = [];
-    const batchSize = 4; // Safe concurrency level to prevent 409 conflicts
-    const batchDelay = 200; // 200ms delay between batches
-    const totalBatches = Math.ceil(promises.length / batchSize);
-    
-    // Track success metrics
-    let successCount = 0;
-    let errorCount = 0;
-
-    console.log(`🚀 Starting sync: ${promises.length} assignments in ${totalBatches} batches of ${batchSize}`);
-    
-    for (let i = 0; i < promises.length; i += batchSize) {
-      const batch = promises.slice(i, i + batchSize);
-      const batchNumber = Math.floor(i/batchSize) + 1;
-      
-      console.log(`📦 Batch ${batchNumber}/${totalBatches}: Processing ${batch.length} assignments`);
-      
-      try {
-        const batchResults = await Promise.all(batch);
-        results.push(...batchResults);
-        
-        // Count successes and errors for this batch
-        const batchSuccesses = batchResults.filter(r => r.action !== 'error').length;
-        const batchErrors = batchResults.filter(r => r.action === 'error').length;
-        successCount += batchSuccesses;
-        errorCount += batchErrors;
-        
-        console.log(`✅ Batch ${batchNumber} complete: ${batchSuccesses} success, ${batchErrors} errors`);
-        
-        // Add delay between batches to prevent conflicts (except for last batch)
-        if (i + batchSize < promises.length) {
-          console.log(`⏳ Waiting ${batchDelay}ms before next batch...`);
-          await new Promise(resolve => setTimeout(resolve, batchDelay));
-        }
-      } catch (error) {
-        console.error(`❌ Batch ${batchNumber} failed:`, error.message);
-
-        // Process this batch sequentially as fallback
-        console.log(`🔄 Falling back to sequential processing for batch ${batchNumber}...`);
-        for (const promise of batch) {
-          try {
-            const result = await promise;
-            results.push(result);
-            if (result.action !== 'error') {
-              successCount++;
-            } else {
-              errorCount++;
-            }
-          } catch (err) {
-            console.error('❌ Sequential fallback also failed:', err);
-            const errorResult = { action: 'error', assignment: 'Unknown', error: err.message };
-            results.push(errorResult);
-            errorCount++;
+          // Cache the new assignment
+          if (this.assignmentCache) {
+            await this.assignmentCache.cacheAssignment(canvasId, assignment, result.id);
           }
+
+          results.created.push({
+            canvasId,
+            title: assignment.title,
+            notionPageId: result.id
+          });
+
+        } else if (comparison.needsUpdate) {
+          // Assignment changed - update in Notion
+          const notionPageId = comparison.cachedEntry.notionPageId;
+          console.log(`🔄 Updating assignment: ${assignment.title} (changed fields: ${comparison.changedFields.join(', ')})`);
+
+          // Preserve manual status changes
+          await this.applyStatusPreservation(properties, notionPageId, assignment.status);
+
+          const result = await this.notionAPI.updatePage(notionPageId, properties);
+
+          // Update cache with new data
+          if (this.assignmentCache) {
+            await this.assignmentCache.cacheAssignment(canvasId, assignment, notionPageId);
+          }
+
+          results.updated.push({
+            canvasId,
+            title: assignment.title,
+            changedFields: comparison.changedFields,
+            notionPageId
+          });
+
+        } else {
+          // No changes - skip API call
+          console.log(`⏭️  No changes, skipped: ${assignment.title}`);
+          results.skipped.push({
+            canvasId,
+            title: assignment.title
+          });
         }
+
+      } catch (error) {
+        console.error(`❌ Error syncing assignment ${assignment.title}:`, error.message);
+        results.errors.push({
+          canvasId,
+          title: assignment.title,
+          error: error.message
+        });
       }
+
+      // Small delay between API calls to respect rate limits
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
-    
-    // Final summary
-    const successRate = ((successCount / results.length) * 100).toFixed(1);
-    console.log(`\n📊 Sync Complete:`);
-    console.log(`   Total: ${results.length} assignments`);
-    console.log(`   ✅ Success: ${successCount} (${successRate}%)`);
-    console.log(`   ❌ Errors: ${errorCount}`);
-    
-    if (successRate < 100) {
-      console.warn(`⚠️ Success rate below 100% - check errors above`);
-    } else {
-      console.log(`🎉 Perfect sync achieved!`);
+
+    // Step 4: Handle deleted assignments
+    if (this.assignmentCache && activeCourseIds.length > 0) {
+      console.log(`\n🗑️  Checking for deleted assignments...`);
+      const cleanup = await this.assignmentCache.cleanupInactiveCourses(canvasIds);
+
+      // Delete from Notion (active courses only)
+      for (const { canvasId, notionPageId, courseId } of cleanup.toDelete) {
+        try {
+          console.log(`🗑️  Deleting assignment from active course (Canvas ID: ${canvasId}, Course: ${courseId})`);
+
+          // Archive the page in Notion
+          await this.notionAPI.updatePage(notionPageId, {}, { archived: true });
+
+          // Remove from cache
+          await this.assignmentCache.removeAssignment(canvasId);
+
+          results.deleted.push({ canvasId, courseId, notionPageId });
+        } catch (error) {
+          console.error(`❌ Failed to delete assignment ${canvasId}:`, error.message);
+          results.errors.push({
+            canvasId,
+            error: `Deletion failed: ${error.message}`
+          });
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+
+      // Remove from cache only (inactive courses - keep in Notion as historical data)
+      for (const { canvasId, courseId } of cleanup.toRemove) {
+        console.log(`📦 Removing from cache (inactive course ${courseId}, keeping in Notion): ${canvasId}`);
+        await this.assignmentCache.removeAssignment(canvasId);
+      }
+
+      console.log(`✅ Cleanup complete: ${cleanup.toDelete.length} deleted, ${cleanup.toRemove.length} archived from cache`);
     }
-    
+
+    // Step 5: Print summary
+    this.printSyncSummary(results);
+
     return results;
+  }
+
+  /**
+   * Preserve manual "In Progress" and "Submitted" status changes
+   * Only allow automatic status updates that progress forward in the workflow
+   */
+  async applyStatusPreservation(properties, notionPageId, newStatus) {
+    try {
+      // Fetch current page to check existing status
+      const currentPage = await this.notionAPI.getPage(notionPageId);
+      const existingStatus = currentPage.properties?.Status?.select?.name;
+
+      // If existing status is "In Progress", only update if new status is "Submitted" or "Graded"
+      if (existingStatus === 'In Progress' &&
+          newStatus !== 'Submitted' &&
+          newStatus !== 'Graded') {
+        properties.Status = { select: { name: 'In Progress' } };
+      }
+
+      // If existing status is "Submitted", only update if new status is "Graded"
+      if (existingStatus === 'Submitted' && newStatus !== 'Graded') {
+        properties.Status = { select: { name: 'Submitted' } };
+      }
+    } catch (error) {
+      // If we can't fetch the current page, just use the new status
+      console.warn(`Could not fetch existing status for status preservation:`, error.message);
+    }
+  }
+
+  /**
+   * Print detailed sync summary
+   */
+  printSyncSummary(results) {
+    const total = results.created.length + results.updated.length +
+                  results.skipped.length + results.deleted.length + results.errors.length;
+
+    console.log(`\n📊 Sync Summary:`);
+    console.log(`   Total assignments: ${total}`);
+    console.log(`   ➕ Created: ${results.created.length}`);
+    console.log(`   🔄 Updated: ${results.updated.length}`);
+    console.log(`   ⏭️  Skipped (no changes): ${results.skipped.length}`);
+    console.log(`   🗑️  Deleted: ${results.deleted.length}`);
+    console.log(`   ❌ Errors: ${results.errors.length}`);
+
+    if (results.skipped.length > 0) {
+      const apiSavings = ((results.skipped.length / total) * 100).toFixed(1);
+      console.log(`\n💡 API call reduction: ${apiSavings}% (${results.skipped.length}/${total} assignments unchanged)`);
+    }
+
+    if (results.errors.length > 0) {
+      console.warn(`\n⚠️  Errors encountered:`);
+      results.errors.forEach(err => {
+        console.warn(`   - ${err.title || err.canvasId}: ${err.error}`);
+      });
+    } else {
+      console.log(`\n✅ Sync completed successfully!`);
+    }
   }
 }

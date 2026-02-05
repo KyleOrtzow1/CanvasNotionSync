@@ -19,7 +19,7 @@ class CanvasAPIExtractor {
         case 'EXTRACT_ASSIGNMENTS':
           this.forceRefresh = request.forceRefresh || false;
           this.extractAssignments()
-            .then(assignments => sendResponse({ success: true, assignments }))
+            .then(result => sendResponse({ success: true, ...result }))
             .catch(error => sendResponse({ success: false, error: error.message }));
           return true;
         case 'SET_CANVAS_TOKEN':
@@ -102,6 +102,7 @@ class CanvasAPIExtractor {
 
       // Get assignments from all courses
       const allAssignments = [];
+      const activeCourseIds = courses.map(c => c.id.toString());
 
       for (const course of courses) {
         try {
@@ -180,6 +181,7 @@ class CanvasAPIExtractor {
               title: assignment.name,
               course: this.extractCourseInfo(course.course_code),
               courseCode: course.course_code,
+              courseId: course.id.toString(),
               dueDate: assignment.due_at,
               points: assignment.points_possible,
               canvasId: assignment.id.toString(),
@@ -199,7 +201,10 @@ class CanvasAPIExtractor {
         }
       }
 
-      return allAssignments;
+      return {
+        assignments: allAssignments,
+        activeCourseIds: activeCourseIds
+      };
 
     } catch (error) {
       console.error('API extraction failed:', error.message);

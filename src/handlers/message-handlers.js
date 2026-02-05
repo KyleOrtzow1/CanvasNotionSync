@@ -1,5 +1,5 @@
 import { CredentialManager } from '../credentials/credential-manager.js';
-import { handleAssignmentSync, handleBackgroundSync, testNotionConnection, getCanvasCache, getNotionCache } from './background-handlers.js';
+import { handleAssignmentSync, handleBackgroundSync, testNotionConnection, getAssignmentCache } from './background-handlers.js';
 
 // Message handling
 export function setupMessageHandlers() {
@@ -43,38 +43,34 @@ export function setupMessageHandlers() {
         return true;
 
       case 'GET_CANVAS_CACHE':
+        // Legacy support - now redirects to assignment cache
         (async () => {
-          const canvasCache = getCanvasCache();
-          const data = await canvasCache.get(request.key);
-          sendResponse({ success: true, data });
+          sendResponse({ success: true, data: null });
         })();
         return true;
 
       case 'SET_CANVAS_CACHE':
+        // Legacy support - no-op, cache is now managed internally
         (async () => {
-          const canvasCache = getCanvasCache();
-          await canvasCache.set(request.key, request.data, request.ttl);
           sendResponse({ success: true });
         })();
         return true;
 
       case 'UPDATE_RATE_LIMIT':
+        // Legacy support - no-op
         (async () => {
-          const canvasCache = getCanvasCache();
-          await canvasCache.updateRateLimitInfo(request.info);
           sendResponse({ success: true });
         })();
         return true;
 
       case 'GET_CACHE_STATS':
         (async () => {
-          const canvasCache = getCanvasCache();
-          const notionCache = getNotionCache();
+          const assignmentCache = getAssignmentCache();
+          const stats = await assignmentCache.getStats();
           sendResponse({
             success: true,
             stats: {
-              canvas: canvasCache.getStats(),
-              notion: notionCache.getStats()
+              assignment: stats
             }
           });
         })();
@@ -82,10 +78,8 @@ export function setupMessageHandlers() {
 
       case 'CLEAR_CACHE':
         (async () => {
-          const canvasCache = getCanvasCache();
-          const notionCache = getNotionCache();
-          await canvasCache.clear();
-          await notionCache.clear();
+          const assignmentCache = getAssignmentCache();
+          await assignmentCache.clearAll();
           sendResponse({ success: true });
         })();
         return true;
