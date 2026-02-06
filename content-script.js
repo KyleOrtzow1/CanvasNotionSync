@@ -188,7 +188,7 @@ class CanvasAPIExtractor {
               link: assignment.html_url,
               status: submissionStatus,
               type: assignment.submission_types?.join(', ') || 'Assignment',
-              description: assignment.description,
+              description: sanitizeHTML(assignment.description),
               grade: grade,
               gradePercent: gradePercent,
               source: 'canvas_api'

@@ -2,6 +2,8 @@
 // Validates properties before sending to Notion API to prevent
 // silent failures and data corruption.
 
+import { sanitizeHTML } from '../utils/sanitization.js';
+
 const ISO_8601_DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 const ISO_8601_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 const ISO_8601_DATETIME_MS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{1,3}Z$/;
@@ -246,7 +248,8 @@ export class NotionValidator {
       points: null,
       link: null,
       canvasId: null,
-      gradePercent: null
+      gradePercent: null,
+      description: null
     };
 
     // Validate title as rich text
@@ -317,6 +320,16 @@ export class NotionValidator {
         validated.gradePercent = gradeResult.sanitized;
       } else {
         warnings.push(`gradePercent: Skipping invalid number value`);
+      }
+    }
+
+    // Sanitize and validate description (HTML from Canvas -> plain text)
+    if (assignment.description !== null && assignment.description !== undefined && assignment.description !== '') {
+      const sanitized = sanitizeHTML(assignment.description);
+      if (sanitized) {
+        const descResult = this.validateRichText(sanitized);
+        if (descResult.warning) warnings.push(`description: ${descResult.warning}`);
+        validated.description = descResult.sanitized;
       }
     }
 

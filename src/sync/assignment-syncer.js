@@ -1,4 +1,5 @@
 import { NotionValidator } from '../validators/notion-validator.js';
+import { sanitizeHTML } from '../utils/sanitization.js';
 
 // Assignment synchronization logic with unified cache system
 export class AssignmentSyncer {
@@ -85,6 +86,12 @@ export class AssignmentSyncer {
     if (validated.gradePercent !== null) {
       properties["Grade"] = {
         number: validated.gradePercent
+      };
+    }
+
+    if (validated.description) {
+      properties["Description"] = {
+        rich_text: NotionValidator.splitLongText(validated.description)
       };
     }
 
