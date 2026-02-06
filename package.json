@@ -2,8 +2,9 @@
   "name": "canvas-notion-sync",
   "version": "1.0.0",
   "description": "Chrome extension to sync Canvas LMS assignments with Notion",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Tests not yet implemented\" && exit 0",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest",
     "lint": "eslint . --ext .js",
     "lint:security": "eslint . --ext .js --config .eslintrc.security.json",
     "check:security": "node .github/scripts/check-credentials.js && node .github/scripts/check-console-logs.js && node .github/scripts/check-dangerous-functions.js && node .github/scripts/verify-encryption.js && node .github/scripts/check-https.js && node .github/scripts/check-permissions.js && node .github/scripts/check-csp.js && node .github/scripts/check-rate-limiting.js && node .github/scripts/check-error-messages.js",
@@ -20,10 +21,12 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "@eslint/js": "^8.57.0",
+    "@jest/globals": "^30.2.0",
     "eslint": "^8.57.0",
-    "eslint-plugin-security": "^2.1.0",
     "eslint-plugin-no-secrets": "^1.0.2",
+    "eslint-plugin-security": "^2.1.0",
     "eslint-plugin-sonarjs": "^0.24.0",
-    "@eslint/js": "^8.57.0"
+    "jest": "^30.2.0"
   }
 }
