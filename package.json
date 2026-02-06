@@ -7,8 +7,8 @@
     "test": "node --experimental-vm-modules node_modules/.bin/jest",
     "lint": "eslint . --ext .js",
     "lint:security": "eslint . --ext .js --config .eslintrc.security.json",
-    "check:security": "node .github/scripts/check-credentials.js && node .github/scripts/check-console-logs.js && node .github/scripts/check-dangerous-functions.js && node .github/scripts/verify-encryption.js && node .github/scripts/check-https.js && node .github/scripts/check-permissions.js && node .github/scripts/check-csp.js && node .github/scripts/check-rate-limiting.js && node .github/scripts/check-error-messages.js",
-    "check:performance": "node .github/scripts/check-api-calls.js && node .github/scripts/check-caching.js && node .github/scripts/check-blocking-operations.js",
+    "check:security": "node .github/scripts/check-credentials.cjs && node .github/scripts/check-console-logs.cjs && node .github/scripts/check-dangerous-functions.cjs && node .github/scripts/verify-encryption.cjs && node .github/scripts/check-https.cjs && node .github/scripts/check-permissions.cjs && node .github/scripts/check-csp.cjs && node .github/scripts/check-rate-limiting.cjs && node .github/scripts/check-error-messages.cjs",
+    "check:performance": "node .github/scripts/check-api-calls.cjs && node .github/scripts/check-caching.cjs && node .github/scripts/check-blocking-operations.cjs",
     "check:all": "npm run check:security && npm run check:performance"
   },
   "keywords": [
