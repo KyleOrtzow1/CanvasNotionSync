@@ -159,7 +159,6 @@ export class CacheManager {
     if (lruKey) {
       this.cache.delete(lruKey);
       this.stats.evictions++;
-      console.log(`🗑️ Evicted LRU entry: ${lruKey}`);
     }
   }
 

@@ -136,7 +136,6 @@ export async function handleAssignmentSync(assignments, activeCourseIds = []) {
     await chrome.storage.local.set({ lastSync: Date.now() });
 
     // Show notification with detailed stats
-    const total = results.created.length + results.updated.length + results.skipped.length;
     const message = `Created: ${results.created.length}, Updated: ${results.updated.length}, Skipped: ${results.skipped.length}`;
 
     showNotification('Sync Complete', message);

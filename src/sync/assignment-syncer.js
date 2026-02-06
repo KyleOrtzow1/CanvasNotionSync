@@ -137,7 +137,6 @@ export class AssignmentSyncer {
 
         if (!comparison.cachedEntry) {
           // New assignment - create in Notion
-          console.log(`➕ Creating new assignment: ${assignment.title}`);
           const result = await this.notionAPI.createPage(this.dataSourceId, properties);
 
           // Cache the new assignment
@@ -154,12 +153,11 @@ export class AssignmentSyncer {
         } else if (comparison.needsUpdate) {
           // Assignment changed - update in Notion
           const notionPageId = comparison.cachedEntry.notionPageId;
-          console.log(`🔄 Updating assignment: ${assignment.title} (changed fields: ${comparison.changedFields.join(', ')})`);
 
           // Preserve manual status changes
           await this.applyStatusPreservation(properties, notionPageId, assignment.status);
 
-          const result = await this.notionAPI.updatePage(notionPageId, properties);
+          await this.notionAPI.updatePage(notionPageId, properties);
 
           // Update cache with new data
           if (this.assignmentCache) {
@@ -175,7 +173,6 @@ export class AssignmentSyncer {
 
         } else {
           // No changes - skip API call
-          console.log(`⏭️  No changes, skipped: ${assignment.title}`);
           results.skipped.push({
             canvasId,
             title: assignment.title
@@ -203,8 +200,6 @@ export class AssignmentSyncer {
       // Delete from Notion (active courses only)
       for (const { canvasId, notionPageId, courseId } of cleanup.toDelete) {
         try {
-          console.log(`🗑️  Deleting assignment from active course (Canvas ID: ${canvasId}, Course: ${courseId})`);
-
           // Archive the page in Notion
           await this.notionAPI.updatePage(notionPageId, {}, { archived: true });
 
@@ -224,8 +219,7 @@ export class AssignmentSyncer {
       }
 
       // Remove from cache only (inactive courses - keep in Notion as historical data)
-      for (const { canvasId, courseId } of cleanup.toRemove) {
-        console.log(`📦 Removing from cache (inactive course ${courseId}, keeping in Notion): ${canvasId}`);
+      for (const { canvasId } of cleanup.toRemove) {
         await this.assignmentCache.removeAssignment(canvasId);
       }
 

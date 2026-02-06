@@ -15,6 +15,5 @@ setupSecurityHandlers();
   const assignmentCache = getAssignmentCache();
   await assignmentCache.loadPersistentCache();
   assignmentCache.cleanupExpired();
-  console.log('✅ Assignment cache loaded');
 })();
 

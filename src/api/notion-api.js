@@ -208,9 +208,6 @@ export class NotionAPI {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         const result = await requestFunction();
-        if (attempt > 1) {
-          console.log(`✅ ${operationType} succeeded on attempt ${attempt}`);
-        }
         return result;
       } catch (error) {
         lastError = error;
