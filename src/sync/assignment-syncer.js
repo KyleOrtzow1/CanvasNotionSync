@@ -1,3 +1,5 @@
+import { NotionValidator } from '../validators/notion-validator.js';
+
 // Assignment synchronization logic with unified cache system
 export class AssignmentSyncer {
   constructor(notionAPI, databaseId, assignmentCache = null) {
@@ -30,53 +32,59 @@ export class AssignmentSyncer {
   // REMOVED: findExistingAssignment - replaced with batch lookup for performance
 
   formatAssignmentProperties(assignment) {
+    // Validate all fields before building Notion properties
+    const { validated, warnings } = NotionValidator.validateAssignmentForNotion(assignment);
+
+    if (warnings.length > 0) {
+      console.warn(`⚠️ Validation warnings for "${assignment.title || assignment.canvasId}":`,
+        warnings.join('; '));
+    }
+
     const properties = {
       "Assignment Name": {
-        title: [{ text: { content: assignment.title || 'Untitled Assignment' } }]
+        title: [{ text: { content: validated.title } }]
       }
     };
 
-    if (assignment.course) {
+    if (validated.course) {
       properties["Course"] = {
-        select: { name: assignment.course }
+        select: { name: validated.course }
       };
     }
 
-    if (assignment.dueDate) {
+    if (validated.dueDate) {
       properties["Due Date"] = {
-        date: { start: assignment.dueDate }
+        date: { start: validated.dueDate }
       };
     }
 
-    if (assignment.status) {
+    if (validated.status) {
       properties["Status"] = {
-        select: { name: assignment.status }
+        select: { name: validated.status }
       };
     }
 
-    if (assignment.points) {
+    if (validated.points !== null) {
       properties["Points"] = {
-        number: assignment.points
+        number: validated.points
       };
     }
 
-    if (assignment.link) {
+    if (validated.link) {
       properties["Link to Resources"] = {
-        url: assignment.link
+        url: validated.link
       };
     }
 
-    if (assignment.canvasId) {
+    if (validated.canvasId) {
       properties["Canvas ID"] = {
-        rich_text: [{ text: { content: assignment.canvasId.toString() } }]
+        rich_text: NotionValidator.splitLongText(validated.canvasId)
       };
     }
 
-    // Add grade as percentage number
-    if (assignment.gradePercent !== null && assignment.gradePercent !== undefined) {
-      // Use calculated percentage as number
+    if (validated.gradePercent !== null) {
       properties["Grade"] = {
-        number: assignment.gradePercent
+        number: validated.gradePercent
       };
     }
 
