@@ -2,7 +2,9 @@
 // Validates properties before sending to Notion API to prevent
 // silent failures and data corruption.
 
-const ISO_8601_REGEX = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z)?$/;
+const ISO_8601_DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const ISO_8601_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+const ISO_8601_DATETIME_MS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{1,3}Z$/;
 const NOTION_RICH_TEXT_MAX_CHARS = 2000;
 
 export class NotionValidator {
@@ -27,7 +29,11 @@ export class NotionValidator {
 
     const trimmed = date.trim();
 
-    if (!ISO_8601_REGEX.test(trimmed)) {
+    const isValidISO = ISO_8601_DATE_ONLY.test(trimmed) ||
+      ISO_8601_DATETIME.test(trimmed) ||
+      ISO_8601_DATETIME_MS.test(trimmed);
+
+    if (!isValidISO) {
       // Attempt to parse and reformat
       const parsed = new Date(trimmed);
       if (!isNaN(parsed.getTime())) {
