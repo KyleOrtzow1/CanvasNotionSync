@@ -88,6 +88,12 @@ export class AssignmentSyncer {
       };
     }
 
+    if (validated.description) {
+      properties["Description"] = {
+        rich_text: NotionValidator.splitLongText(validated.description)
+      };
+    }
+
     return properties;
   }
 

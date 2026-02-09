@@ -14,7 +14,7 @@
       "https://*.instructure.com/*", 
       "https://*.canvaslms.com/*"
     ],
-    "js": ["content-script.js"],
+    "js": ["src/utils/sanitization.js", "content-script.js"],
     "run_at": "document_idle"
   }],
   
