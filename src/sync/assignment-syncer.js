@@ -1,5 +1,4 @@
 import { NotionValidator } from '../validators/notion-validator.js';
-import { sanitizeHTML } from '../utils/sanitization.js';
 
 // Assignment synchronization logic with unified cache system
 export class AssignmentSyncer {
