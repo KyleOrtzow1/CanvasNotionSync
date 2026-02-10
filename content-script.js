@@ -1,3 +1,4 @@
+/* global sanitizeHTML */
 // Canvas-Notion Sync: API-Only Assignment Extractor
 
 // Prevent multiple initialization
@@ -5,7 +6,7 @@ if (!window.canvasNotionExtractorLoaded) {
   window.canvasNotionExtractorLoaded = true;
 
 // Sanitize HTML from Canvas API descriptions to safe plain text (XSS prevention)
-const sanitizeHTML = (html) => { // eslint-disable-line no-unused-vars
+const sanitizeHTML = (html) => {
   if (!html) return '';
   const doc = new DOMParser().parseFromString(String(html), 'text/html');
   return (doc.body.textContent || '').trim();
