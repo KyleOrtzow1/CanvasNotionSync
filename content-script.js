@@ -1,4 +1,3 @@
-/* global sanitizeHTML */
 // Canvas-Notion Sync: API-Only Assignment Extractor
 
 // Prevent multiple initialization
