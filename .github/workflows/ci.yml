@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: ESLint security audit
+        run: npx eslint . --ext .js --config .eslintrc.security.json --ignore-pattern '.github/'
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  security:
+    name: Security scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for hardcoded credentials
+        run: node .github/scripts/check-credentials.cjs
+
+      - name: Check for dangerous functions
+        run: node .github/scripts/check-dangerous-functions.cjs
+
+      - name: Verify HTTPS usage
+        run: node .github/scripts/check-https.cjs
+
+      - name: Validate manifest permissions
+        run: node .github/scripts/check-permissions.cjs
+
+      - name: Validate Content Security Policy
+        run: node .github/scripts/check-csp.cjs
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
