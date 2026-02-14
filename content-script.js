@@ -158,7 +158,7 @@ class CanvasAPIExtractor {
             let gradePercent = null;
             let submissionStatus = 'Not Started';
 
-            // Get submission data if available
+            // Get submission data if available (included via ?include=submission)
             if (assignment.submission) {
               const submission = assignment.submission;
               if (submission.grade) {
@@ -168,20 +168,6 @@ class CanvasAPIExtractor {
                 gradePercent = Math.round((submission.score / assignment.points_possible) * 100);
               }
               submissionStatus = this.getSubmissionStatus(submission);
-            } else {
-              // Try to get submission separately if not included
-              try {
-                const submission = await this.makeAPICall(`/courses/${course.id}/assignments/${assignment.id}/submissions/self`);
-                if (submission.grade) {
-                  grade = submission.grade;
-                }
-                if (submission.score && assignment.points_possible) {
-                  gradePercent = Math.round((submission.score / assignment.points_possible) * 100);
-                }
-                submissionStatus = this.getSubmissionStatus(submission);
-              } catch (error) {
-                // Submission not available - will use default status
-              }
             }
 
             transformedAssignments.push({
