@@ -56,13 +56,6 @@ export function setupMessageHandlers() {
         })();
         return true;
 
-      case 'UPDATE_RATE_LIMIT':
-        // Legacy support - no-op
-        (async () => {
-          sendResponse({ success: true });
-        })();
-        return true;
-
       case 'GET_CACHE_STATS':
         (async () => {
           const assignmentCache = getAssignmentCache();

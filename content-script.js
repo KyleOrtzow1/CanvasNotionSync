@@ -16,6 +16,7 @@ class CanvasAPIExtractor {
     this.canvasToken = null;
     this.baseURL = null;
     this.forceRefresh = false;
+    this.rateLimiter = new CanvasRateLimiter();
     this.setupMessageListener();
     this.detectCanvasInstance();
   }
@@ -206,10 +207,9 @@ class CanvasAPIExtractor {
   }
 
   async makeAPICall(endpoint, params = {}) {
-    try {
+    return this.rateLimiter.execute(async () => {
       const url = new URL(this.baseURL + endpoint);
-      
-      // Add parameters
+
       Object.keys(params).forEach(key => {
         url.searchParams.append(key, params[key]);
       });
@@ -219,7 +219,6 @@ class CanvasAPIExtractor {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.canvasToken}`
       };
-
 
       // Create a safe fetch function to avoid illegal invocation
       const safeFetch = (() => {
@@ -235,32 +234,23 @@ class CanvasAPIExtractor {
         credentials: 'include'
       });
 
-      // Extract rate limit headers
-      const rateLimitInfo = {
-        remaining: response.headers.get('X-Rate-Limit-Remaining'),
-        cost: response.headers.get('X-Request-Cost')
-      };
+      // Update rate limiter bucket from response headers
+      this.rateLimiter.updateFromHeaders(response.headers);
 
-      // Send to background for caching
-      chrome.runtime.sendMessage({
-        action: 'UPDATE_RATE_LIMIT',
-        info: rateLimitInfo
-      }).catch(() => {
-        // Ignore errors - rate limit tracking is non-critical
-      });
+      if (response.status === 403) {
+        const errorText = await response.text();
+        const error = new Error(`Canvas API error: 403 Forbidden - ${errorText}`);
+        error.status = 403;
+        throw error;
+      }
 
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`Canvas API error: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
-      const data = await response.json();
-      return data;
-
-    } catch (error) {
-      console.error('API call failed:', error.message);
-      throw error;
-    }
+      return await response.json();
+    });
   }
 
   getAssignmentStatus(assignment) {
