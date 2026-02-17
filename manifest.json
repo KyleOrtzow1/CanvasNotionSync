@@ -14,7 +14,7 @@
       "https://*.instructure.com/*", 
       "https://*.canvaslms.com/*"
     ],
-    "js": ["src/utils/sanitization.js", "src/api/canvas-rate-limiter.js", "content-script.js"],
+    "js": ["src/api/canvas-rate-limiter.js", "content-script.js"],
     "run_at": "document_idle"
   }],
   
