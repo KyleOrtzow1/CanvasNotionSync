@@ -168,22 +168,42 @@ export class AssignmentSyncer {
           // Assignment changed - update in Notion
           const notionPageId = comparison.cachedEntry.notionPageId;
 
-          // Preserve manual status changes
-          await this.applyStatusPreservation(properties, notionPageId, assignment.status);
+          try {
+            // Preserve manual status changes
+            await this.applyStatusPreservation(properties, notionPageId, assignment.status);
 
-          await this.notionAPI.updatePage(notionPageId, properties);
+            await this.notionAPI.updatePage(notionPageId, properties);
 
-          // Update cache with new data
-          if (this.assignmentCache) {
-            await this.assignmentCache.cacheAssignment(canvasId, assignment, notionPageId);
+            // Update cache with new data
+            if (this.assignmentCache) {
+              await this.assignmentCache.cacheAssignment(canvasId, assignment, notionPageId);
+            }
+
+            results.updated.push({
+              canvasId,
+              title: assignment.title,
+              changedFields: comparison.changedFields,
+              notionPageId
+            });
+          } catch (updateError) {
+            // If the page was archived/trashed in Notion, create a new one
+            if (updateError.message && updateError.message.includes('archived')) {
+              console.log(`♻️ Page archived in Notion for "${assignment.title}", creating new page`);
+              const result = await this.notionAPI.createPage(this.dataSourceId, properties);
+
+              if (this.assignmentCache) {
+                await this.assignmentCache.cacheAssignment(canvasId, assignment, result.id);
+              }
+
+              results.created.push({
+                canvasId,
+                title: assignment.title,
+                notionPageId: result.id
+              });
+            } else {
+              throw updateError;
+            }
           }
-
-          results.updated.push({
-            canvasId,
-            title: assignment.title,
-            changedFields: comparison.changedFields,
-            notionPageId
-          });
 
         } else {
           // No changes - skip API call

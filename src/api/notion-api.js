@@ -250,7 +250,7 @@ export class NotionAPI {
       }
     }
     
-    console.error(`❌ ${operationType} failed after ${maxRetries} attempts:`, lastError.message);
+    console.error(`❌ ${operationType} failed:`, lastError.message);
     throw lastError;
   }
 }
