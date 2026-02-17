@@ -1,4 +1,5 @@
 // Canvas-Notion Sync: API-Only Assignment Extractor
+/* global CanvasRateLimiter */
 
 // Prevent multiple initialization
 if (!window.canvasNotionExtractorLoaded) {

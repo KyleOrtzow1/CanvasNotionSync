@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, jest } from '@jest/globals';
+import { describe, test, expect, beforeEach } from '@jest/globals';
 import { CanvasRateLimiter } from '../src/api/canvas-rate-limiter.js';
 
 describe('CanvasRateLimiter', () => {
@@ -171,7 +171,6 @@ describe('CanvasRateLimiter', () => {
         }
       };
 
-      const initialCost = limiter.defaultEstimatedCost; // 2
       limiter.updateFromHeaders(mockHeaders);
       // Moving average: 2 * 0.7 + 5 * 0.3 = 1.4 + 1.5 = 2.9
       expect(limiter.defaultEstimatedCost).toBeCloseTo(2.9, 1);
