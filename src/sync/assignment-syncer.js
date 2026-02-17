@@ -29,7 +29,29 @@ export class AssignmentSyncer {
     }
   }
 
-  // REMOVED: findExistingAssignment - replaced with batch lookup for performance
+  /**
+   * Query Notion for a live (non-archived) page matching a Canvas ID.
+   * Used as a fallback when the cached page ID points to an archived page.
+   * @param {string} canvasId
+   * @returns {Object|null} The matching Notion page, or null if none found
+   */
+  async findLivePageByCanvasId(canvasId) {
+    try {
+      const response = await this.notionAPI.queryDataSource(this.dataSourceId, {
+        property: 'Canvas ID',
+        rich_text: { equals: canvasId }
+      });
+
+      // Return the first non-archived result
+      if (response.results && response.results.length > 0) {
+        return response.results.find(page => !page.archived) || null;
+      }
+      return null;
+    } catch (error) {
+      console.warn(`Could not search for existing page with Canvas ID ${canvasId}:`, error.message);
+      return null;
+    }
+  }
 
   formatAssignmentProperties(assignment) {
     // Validate all fields before building Notion properties
@@ -186,20 +208,41 @@ export class AssignmentSyncer {
               notionPageId
             });
           } catch (updateError) {
-            // If the page was archived/trashed in Notion, create a new one
+            // If the page was archived/trashed in Notion, find the live page or create new
             if (updateError.message && updateError.message.includes('archived')) {
-              console.log(`♻️ Page archived in Notion for "${assignment.title}", creating new page`);
-              const result = await this.notionAPI.createPage(this.dataSourceId, properties);
+              console.log(`♻️ Cached page archived in Notion for "${assignment.title}", searching for live page...`);
 
-              if (this.assignmentCache) {
-                await this.assignmentCache.cacheAssignment(canvasId, assignment, result.id);
+              const existingPage = await this.findLivePageByCanvasId(canvasId);
+
+              if (existingPage) {
+                // Found a live page — update it and fix the cache
+                console.log(`🔗 Found existing live page for "${assignment.title}", updating`);
+                await this.notionAPI.updatePage(existingPage.id, properties);
+
+                if (this.assignmentCache) {
+                  await this.assignmentCache.cacheAssignment(canvasId, assignment, existingPage.id);
+                }
+
+                results.updated.push({
+                  canvasId,
+                  title: assignment.title,
+                  changedFields: comparison.changedFields,
+                  notionPageId: existingPage.id
+                });
+              } else {
+                // No live page exists — create a new one
+                const result = await this.notionAPI.createPage(this.dataSourceId, properties);
+
+                if (this.assignmentCache) {
+                  await this.assignmentCache.cacheAssignment(canvasId, assignment, result.id);
+                }
+
+                results.created.push({
+                  canvasId,
+                  title: assignment.title,
+                  notionPageId: result.id
+                });
               }
-
-              results.created.push({
-                canvasId,
-                title: assignment.title,
-                notionPageId: result.id
-              });
             } else {
               throw updateError;
             }
