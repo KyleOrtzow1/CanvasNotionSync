@@ -51,11 +51,17 @@ export class NotionAPI {
   }
 
   // Query data source (not database directly)
-  async queryDataSource(dataSourceId, filters = {}) {
+  async queryDataSource(dataSourceId, filters = {}, options = {}) {
     const requestFunction = async () => {
       const body = {};
       if (Object.keys(filters).length > 0) {
         body.filter = filters;
+      }
+      if (options.start_cursor) {
+        body.start_cursor = options.start_cursor;
+      }
+      if (options.page_size) {
+        body.page_size = options.page_size;
       }
 
       const response = await fetch(`${this.baseURL}/data_sources/${dataSourceId}/query`, {

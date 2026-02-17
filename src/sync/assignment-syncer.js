@@ -53,6 +53,103 @@ export class AssignmentSyncer {
     }
   }
 
+  /**
+   * Extract plain text Canvas ID from a Notion rich_text property.
+   * Handles splitLongText segments via plain_text or text.content.
+   */
+  extractCanvasIdFromProperty(property) {
+    if (!property || !property.rich_text || !Array.isArray(property.rich_text)) {
+      return null;
+    }
+    const text = property.rich_text
+      .map(segment => segment.plain_text || segment.text?.content || '')
+      .join('');
+    return text.trim() || null;
+  }
+
+  /**
+   * Fetch all non-archived pages from the Notion data source and build
+   * a canvasId -> notionPageId ground-truth mapping. Handles pagination.
+   * @returns {Map<string, string>} Map of canvasId to notionPageId
+   */
+  async fetchAllNotionPages() {
+    const truthMap = new Map();
+    let hasMore = true;
+    let startCursor = undefined;
+
+    while (hasMore) {
+      const response = await this.notionAPI.queryDataSource(
+        this.dataSourceId,
+        {},
+        { start_cursor: startCursor, page_size: 100 }
+      );
+
+      for (const page of (response.results || [])) {
+        if (page.archived) continue;
+
+        const canvasId = this.extractCanvasIdFromProperty(page.properties?.['Canvas ID']);
+        if (canvasId && !truthMap.has(canvasId)) {
+          truthMap.set(canvasId, page.id);
+        }
+      }
+
+      hasMore = response.has_more || false;
+      startCursor = response.next_cursor || undefined;
+
+      if (hasMore) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    }
+
+    return truthMap;
+  }
+
+  /**
+   * Reconcile the local cache against the Notion truth map.
+   * Fixes stale notionPageId entries and populates missing ones.
+   * When a notionPageId is corrected, wipes canvasData to force a full update.
+   * @param {Map<string, string>} truthMap - canvasId -> notionPageId from Notion
+   * @returns {Object} { fixed, populated, orphaned }
+   */
+  async reconcileCache(truthMap) {
+    const stats = { fixed: 0, populated: 0, orphaned: 0 };
+
+    // Pass 1: Ensure cache entries match Notion truth
+    for (const [canvasId, notionPageId] of truthMap.entries()) {
+      const cached = await this.assignmentCache.getCachedAssignment(canvasId);
+
+      if (!cached) {
+        // Notion page exists but no cache entry — populate with empty canvasData
+        // to force a full update through the "needsUpdate" path
+        await this.assignmentCache.cacheAssignment(canvasId, {}, notionPageId);
+        stats.populated++;
+      } else if (cached.notionPageId !== notionPageId) {
+        // Cache points to wrong Notion page — fix it and wipe canvasData
+        await this.assignmentCache.cacheAssignment(canvasId, {}, notionPageId);
+        stats.fixed++;
+      }
+    }
+
+    // Pass 2: Remove cache entries whose notionPageId no longer exists in Notion
+    const allCached = await this.assignmentCache.getAllAssignments();
+    const truthPageIds = new Set(truthMap.values());
+
+    for (const entry of allCached) {
+      if (entry.notionPageId && !truthPageIds.has(entry.notionPageId)) {
+        // The page this cache entry points to was deleted
+        if (!truthMap.has(entry.canvasId)) {
+          // No Notion page at all for this canvasId — remove stale entry
+          await this.assignmentCache.removeAssignment(entry.canvasId);
+          stats.orphaned++;
+        }
+        // If truthMap has this canvasId with a different pageId,
+        // it was already fixed in Pass 1
+      }
+    }
+
+    return stats;
+  }
+
   formatAssignmentProperties(assignment) {
     // Validate all fields before building Notion properties
     const { validated, warnings } = NotionValidator.validateAssignmentForNotion(assignment);
@@ -133,6 +230,28 @@ export class AssignmentSyncer {
 
     console.log(`\n🔄 Starting unified cache sync for ${assignments.length} Canvas assignments`);
 
+    // Step 0: Reconcile cache with Notion reality
+    this._notionTruthMap = null;
+    if (this.assignmentCache) {
+      try {
+        console.log('🔍 Reconciling cache with Notion...');
+        const truthMap = await this.fetchAllNotionPages();
+        console.log(`📄 Found ${truthMap.size} existing pages in Notion`);
+
+        const reconcileStats = await this.reconcileCache(truthMap);
+        if (reconcileStats.fixed > 0 || reconcileStats.populated > 0 || reconcileStats.orphaned > 0) {
+          console.log(
+            `🔧 Cache reconciliation: ${reconcileStats.fixed} fixed, ` +
+            `${reconcileStats.populated} populated, ${reconcileStats.orphaned} orphaned removed`
+          );
+        }
+
+        this._notionTruthMap = truthMap;
+      } catch (error) {
+        console.warn('⚠️ Cache reconciliation failed, continuing with existing cache:', error.message);
+      }
+    }
+
     // Step 1: Set active courses for deletion detection
     if (this.assignmentCache && activeCourseIds.length > 0) {
       this.assignmentCache.setActiveCourses(activeCourseIds);
@@ -172,19 +291,38 @@ export class AssignmentSyncer {
         const properties = this.formatAssignmentProperties(assignment);
 
         if (!comparison.cachedEntry) {
-          // New assignment - create in Notion
-          const result = await this.notionAPI.createPage(this.dataSourceId, properties);
+          // Check truth map before creating — avoid duplicates
+          const existingPageId = this._notionTruthMap?.get(canvasId);
 
-          // Cache the new assignment
-          if (this.assignmentCache) {
-            await this.assignmentCache.cacheAssignment(canvasId, assignment, result.id);
+          if (existingPageId) {
+            // Page exists in Notion but wasn't in cache — update instead of create
+            console.log(`🔗 Found existing Notion page for "${assignment.title}", updating instead of creating`);
+            await this.notionAPI.updatePage(existingPageId, properties);
+
+            if (this.assignmentCache) {
+              await this.assignmentCache.cacheAssignment(canvasId, assignment, existingPageId);
+            }
+
+            results.updated.push({
+              canvasId,
+              title: assignment.title,
+              changedFields: ['all (reconciled)'],
+              notionPageId: existingPageId
+            });
+          } else {
+            // Genuinely new assignment - create in Notion
+            const result = await this.notionAPI.createPage(this.dataSourceId, properties);
+
+            if (this.assignmentCache) {
+              await this.assignmentCache.cacheAssignment(canvasId, assignment, result.id);
+            }
+
+            results.created.push({
+              canvasId,
+              title: assignment.title,
+              notionPageId: result.id
+            });
           }
-
-          results.created.push({
-            canvasId,
-            title: assignment.title,
-            notionPageId: result.id
-          });
 
         } else if (comparison.needsUpdate) {
           // Assignment changed - update in Notion
