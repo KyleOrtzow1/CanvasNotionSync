@@ -156,10 +156,7 @@ class CanvasRateLimiter {
   }
 }
 
-// ES module export for test/background contexts
-export { CanvasRateLimiter };
-
-// globalThis export for content script (non-module) context
+// Make available as global when loaded as a content script (non-module) context
 if (typeof globalThis !== 'undefined' && typeof globalThis.CanvasRateLimiter === 'undefined') {
   globalThis.CanvasRateLimiter = CanvasRateLimiter;
 }

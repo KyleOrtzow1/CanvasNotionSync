@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeEach } from '@jest/globals';
-import { CanvasRateLimiter } from '../src/api/canvas-rate-limiter.js';
+import '../src/api/canvas-rate-limiter.js';
+const { CanvasRateLimiter } = globalThis;
 
 describe('CanvasRateLimiter', () => {
   let limiter;
