@@ -67,7 +67,7 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
       try {
         await chrome.scripting.executeScript({
           target: { tabId: activeTab.id },
-          files: ['content-script.js']
+          files: ['src/api/canvas-rate-limiter.js', 'content-script.js']
         });
         
         // Wait for script to initialize
