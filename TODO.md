@@ -12,18 +12,18 @@
 **Priority:** CRITICAL | **Estimated Time:** 8 hours
 **Reference:** BEST_PRACTICES.md:176-213
 
-- [ ] Create new file `src/api/canvas-rate-limiter.js`
-- [ ] Implement `CanvasRateLimiter` class with leaky bucket algorithm
-  - [ ] Add constructor with bucket capacity (700 units)
-  - [ ] Add leak rate (10 units/second)
-  - [ ] Implement `waitIfNeeded(estimatedCost)` method
-  - [ ] Implement `updateFromHeaders(headers)` method to sync with actual rate limits
-- [ ] Import rate limiter in `content-script.js`
-- [ ] Initialize rate limiter instance in `CanvasAPIExtractor` constructor
-- [ ] Integrate `waitIfNeeded()` before each Canvas API call in `makeAPICall()` method
-- [ ] Update rate limiter state from response headers in `content-script.js:245-257`
-- [ ] Add rate limit monitoring/logging
-- [ ] Test with multiple rapid API calls to verify throttling works
+- [x] Create new file `src/api/canvas-rate-limiter.js`
+- [x] Implement `CanvasRateLimiter` class with leaky bucket algorithm
+  - [x] Add constructor with bucket capacity (700 units)
+  - [x] Add leak rate (10 units/second)
+  - [x] Implement `waitIfNeeded(estimatedCost)` method
+  - [x] Implement `updateFromHeaders(headers)` method to sync with actual rate limits
+- [x] Import rate limiter in `content-script.js`
+- [x] Initialize rate limiter instance in `CanvasAPIExtractor` constructor
+- [x] Integrate `waitIfNeeded()` before each Canvas API call in `makeAPICall()` method
+- [x] Update rate limiter state from response headers in `content-script.js:245-257`
+- [x] Add rate limit monitoring/logging
+- [x] Test with multiple rapid API calls to verify throttling works
 
 ---
 
@@ -174,7 +174,7 @@
   - [ ] Test `isValidCanvasUrl()` with various URLs
   - [ ] Test `validateCanvasAssignment()` with various inputs
   - [ ] Test `isValidISO8601()` date validation
-  - [ ] Test rate limiter behavior
+  - [x] Test rate limiter behavior
   - [ ] Mock Canvas API responses
   - [ ] Test error handling for all status codes (401, 403, 404, 500, 503)
   - [ ] Test pagination with >100 items
@@ -263,19 +263,19 @@
 **Priority:** HIGH | **Estimated Time:** 5 hours
 **Reference:** BEST_PRACTICES.md:321-341
 
-- [ ] Create `canvasRequestWithRetry()` wrapper function in `content-script.js`
-  - [ ] Accept async function to execute
-  - [ ] Accept `maxRetries` parameter (default: 3)
-  - [ ] Implement try-catch with retry loop
+- [x] Create `canvasRequestWithRetry()` wrapper function in `content-script.js`
+  - [x] Accept async function to execute
+  - [x] Accept `maxRetries` parameter (default: 3)
+  - [x] Implement try-catch with retry loop
   - [ ] Identify transient errors (status >= 500, network errors)
-  - [ ] Identify rate limit errors (status 403 with rate limit message)
-  - [ ] Implement exponential backoff (1s, 2s, 4s)
-  - [ ] Don't retry 4xx errors except 403 rate limits
-  - [ ] Log retry attempts
-- [ ] Wrap `makeAPICall()` with retry logic
-  - [ ] Apply to course fetching
-  - [ ] Apply to assignment fetching
-  - [ ] Apply to submission fetching
+  - [x] Identify rate limit errors (status 403 with rate limit message)
+  - [x] Implement exponential backoff (1s, 2s, 4s)
+  - [x] Don't retry 4xx errors except 403 rate limits
+  - [x] Log retry attempts
+- [x] Wrap `makeAPICall()` with retry logic
+  - [x] Apply to course fetching
+  - [x] Apply to assignment fetching
+  - [x] Apply to submission fetching
 - [ ] Implement user-friendly error mapping
   - [ ] Create `getUserFriendlyCanvasError(error)` function
   - [ ] Map 401 → "Token invalid/expired"
@@ -669,19 +669,19 @@
 - **Estimated Timeline:** 4-6 weeks
 
 ### Completion by Priority
-- **Critical (7 items):** ☑☑☐☐☐☐☐ (2/7 complete)
-- **High (5 items):** ☐☐☐☐☐ (0/5 complete)
+- **Critical (7 items):** ☑☑☑☐☐☐☐ (3/7 complete)
+- **High (5 items):** ☑☐☐☐☐ (1/5 partially — rate limit retry done, error mapping remaining)
 - **Medium (4 items):** ☐☐☐☐ (0/4 complete)
 - **Low (11 items):** ☐☐☐☐☐☐☐☐☐☐☐ (0/11 complete)
 
 ### Overall Progress
 ```
-Critical:    [████████░░░░░░░░░░░░░░░░░░░░░░] 29%
-High:        [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
+Critical:    [████████████░░░░░░░░░░░░░░░░░░] 43%
+High:        [████░░░░░░░░░░░░░░░░░░░░░░░░░░] 12%
 Medium:      [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 Low:         [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 ─────────────────────────────────────────────
-Total:       [███░░░░░░░░░░░░░░░░░░░░░░░░░░░] 8%
+Total:       [█████░░░░░░░░░░░░░░░░░░░░░░░░░] 15%
 ```
 
 ---
@@ -697,4 +697,4 @@ Total:       [███░░░░░░░░░░░░░░░░░░░
 
 ---
 
-**Last Updated:** 2026-02-06
+**Last Updated:** 2026-02-17
