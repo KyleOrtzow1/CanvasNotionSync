@@ -2,7 +2,8 @@ import { CredentialManager } from '../credentials/credential-manager.js';
 import { NotionAPI } from '../api/notion-api.js';
 import { AssignmentSyncer } from '../sync/assignment-syncer.js';
 import { AssignmentCacheManager } from '../cache/assignment-cache-manager.js';
-import { getUserFriendlyNotionError } from '../utils/error-messages.js';
+import '../utils/error-messages.js';
+const { getUserFriendlyNotionError } = globalThis;
 
 // Cache manager singleton instance
 let assignmentCacheInstance = null;

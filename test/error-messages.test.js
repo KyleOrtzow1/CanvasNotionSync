@@ -1,5 +1,6 @@
 import { describe, test, expect } from '@jest/globals';
-import { getUserFriendlyCanvasError, getUserFriendlyNotionError } from '../src/utils/error-messages.js';
+import '../src/utils/error-messages.js';
+const { getUserFriendlyCanvasError, getUserFriendlyNotionError } = globalThis;
 
 describe('getUserFriendlyCanvasError', () => {
 

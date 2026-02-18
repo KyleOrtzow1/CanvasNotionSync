@@ -76,7 +76,7 @@ const notionErrorMap = {
   }
 };
 
-export function getUserFriendlyCanvasError(error) {
+function getUserFriendlyCanvasError(error) {
   const status = error.status || error.statusCode || 0;
   const mapped = canvasErrorMap[status];
 
@@ -100,7 +100,7 @@ export function getUserFriendlyCanvasError(error) {
   };
 }
 
-export function getUserFriendlyNotionError(error) {
+function getUserFriendlyNotionError(error) {
   const status = error.status || error.statusCode || 0;
   const mapped = notionErrorMap[status];
 
