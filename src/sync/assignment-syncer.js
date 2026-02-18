@@ -107,11 +107,14 @@ export class AssignmentSyncer {
   /**
    * Reconcile the local cache against the Notion truth map.
    * Fixes stale notionPageId entries and populates missing ones.
+   * Only populates cache for assignments in the current Canvas sync set to avoid
+   * repeatedly adding and removing entries for inactive courses.
    * When a notionPageId is corrected, wipes canvasData to force a full update.
    * @param {Map<string, string>} truthMap - canvasId -> notionPageId from Notion
+   * @param {Set<string>} [currentCanvasIds] - Canvas IDs in the current sync batch
    * @returns {Object} { fixed, populated, orphaned }
    */
-  async reconcileCache(truthMap) {
+  async reconcileCache(truthMap, currentCanvasIds = null) {
     const stats = { fixed: 0, populated: 0, orphaned: 0 };
 
     // Pass 1: Ensure cache entries match Notion truth
@@ -119,10 +122,13 @@ export class AssignmentSyncer {
       const cached = await this.assignmentCache.getCachedAssignment(canvasId);
 
       if (!cached) {
-        // Notion page exists but no cache entry — populate with empty canvasData
-        // to force a full update through the "needsUpdate" path
-        await this.assignmentCache.cacheAssignment(canvasId, {}, notionPageId);
-        stats.populated++;
+        // Notion page exists but no cache entry — only populate if this
+        // assignment is in the current Canvas sync set (avoids adding entries
+        // for inactive courses that would just be removed during cleanup)
+        if (!currentCanvasIds || currentCanvasIds.has(canvasId)) {
+          await this.assignmentCache.cacheAssignment(canvasId, {}, notionPageId);
+          stats.populated++;
+        }
       } else if (cached.notionPageId !== notionPageId) {
         // Cache points to wrong Notion page — fix it and wipe canvasData
         await this.assignmentCache.cacheAssignment(canvasId, {}, notionPageId);
@@ -230,6 +236,20 @@ export class AssignmentSyncer {
 
     console.log(`\n🔄 Starting unified cache sync for ${assignments.length} Canvas assignments`);
 
+    // Build Canvas assignment map early so we can pass IDs to reconciliation
+    const canvasAssignmentMap = new Map();
+    const canvasIds = [];
+
+    for (const assignment of assignments) {
+      if (assignment.canvasId) {
+        const canvasId = assignment.canvasId.toString();
+        canvasAssignmentMap.set(canvasId, assignment);
+        canvasIds.push(canvasId);
+      }
+    }
+
+    const currentCanvasIdSet = new Set(canvasIds);
+
     // Step 0: Reconcile cache with Notion reality
     this._notionTruthMap = null;
     if (this.assignmentCache) {
@@ -238,7 +258,7 @@ export class AssignmentSyncer {
         const truthMap = await this.fetchAllNotionPages();
         console.log(`📄 Found ${truthMap.size} existing pages in Notion`);
 
-        const reconcileStats = await this.reconcileCache(truthMap);
+        const reconcileStats = await this.reconcileCache(truthMap, currentCanvasIdSet);
         if (reconcileStats.fixed > 0 || reconcileStats.populated > 0 || reconcileStats.orphaned > 0) {
           console.log(
             `🔧 Cache reconciliation: ${reconcileStats.fixed} fixed, ` +
@@ -256,18 +276,6 @@ export class AssignmentSyncer {
     if (this.assignmentCache && activeCourseIds.length > 0) {
       this.assignmentCache.setActiveCourses(activeCourseIds);
       console.log(`📚 Tracking ${activeCourseIds.length} active courses`);
-    }
-
-    // Step 2: Build Canvas assignment map
-    const canvasAssignmentMap = new Map();
-    const canvasIds = [];
-
-    for (const assignment of assignments) {
-      if (assignment.canvasId) {
-        const canvasId = assignment.canvasId.toString();
-        canvasAssignmentMap.set(canvasId, assignment);
-        canvasIds.push(canvasId);
-      }
     }
 
     console.log(`📋 Processing ${canvasIds.length} assignments with Canvas IDs`);
