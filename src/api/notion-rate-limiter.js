@@ -4,10 +4,10 @@ export class NotionRateLimiter {
     this.requestQueue = [];
     this.processing = false;
     this.requestTimes = []; // Track request timestamps for sliding window
-    this.maxRequestsPerSecond = 25; // Allow 25 req/sec bursts for personal use
-    this.averageRequestsPerSecond = 10; // Average 10 req/sec for small batches
+    this.maxRequestsPerSecond = 5; // Burst limit per Notion API guidelines
+    this.averageRequestsPerSecond = 3; // Sustained average per Notion API guidelines
     this.burstWindow = 1000; // 1 second sliding window
-    this.averageWindow = 5000; // 5 second window for faster recovery
+    this.averageWindow = 10000; // 10 second window for average rate enforcement
   }
 
   async execute(requestFunction) {
@@ -35,13 +35,13 @@ export class NotionRateLimiter {
       let canMakeRequest = true;
       let delay = 0;
       
-      // Check burst limit (25 req/sec)
+      // Check burst limit (5 req/sec)
       if (recentRequests.length >= this.maxRequestsPerSecond) {
         delay = Math.max(delay, this.burstWindow - (now - recentRequests[0]));
         canMakeRequest = false;
       }
       
-      // Check average limit (10 req/sec over 5 seconds)
+      // Check average limit (3 req/sec over 10 seconds)
       if (averageRequests >= (this.averageRequestsPerSecond * (this.averageWindow / 1000))) {
         const oldestRequest = this.requestTimes[0];
         delay = Math.max(delay, this.averageWindow - (now - oldestRequest));

@@ -31,22 +31,22 @@
 **Priority:** CRITICAL | **Estimated Time:** 6 hours
 **Reference:** BEST_PRACTICES.md:1057-1093
 
-- [ ] Create `parseLinkHeader(header)` utility function in `content-script.js`
-  - [ ] Parse Link header format: `<url>; rel="next"`
-  - [ ] Extract all relations (next, prev, first, last)
-  - [ ] Return object with named links
-- [ ] Refactor `makeAPICall()` to support pagination
-  - [ ] Rename to `makeAPISingleCall()` (original behavior)
-  - [ ] Create new `makeAPICall()` wrapper that handles pagination
-  - [ ] Loop while `next` link exists
-  - [ ] Accumulate results across pages
-  - [ ] Add optional `maxPages` parameter for safety
-- [ ] Update course fetching (`content-script.js:84-100`)
-  - [ ] Use paginated `makeAPICall()`
-  - [ ] Handle >100 courses
-- [ ] Update assignment fetching (`content-script.js:127-144`)
-  - [ ] Use paginated `makeAPICall()`
-  - [ ] Handle >100 assignments per course
+- [x] Create `parseLinkHeader(header)` utility function in `content-script.js`
+  - [x] Parse Link header format: `<url>; rel="next"`
+  - [x] Extract all relations (next, prev, first, last)
+  - [x] Return object with named links
+- [x] Refactor `makeAPICall()` to support pagination
+  - [x] Rename to `makeSingleAPICall()` (original behavior)
+  - [x] Create new `makeAPICall()` wrapper that handles pagination
+  - [x] Loop while `next` link exists
+  - [x] Accumulate results across pages
+  - [x] Add optional `maxPages` parameter for safety
+- [x] Update course fetching (`content-script.js:84-100`)
+  - [x] Use paginated `makeAPICall()`
+  - [x] Handle >100 courses (maxPages: 10)
+- [x] Update assignment fetching (`content-script.js:127-144`)
+  - [x] Use paginated `makeAPICall()`
+  - [x] Handle >100 assignments per course (maxPages: 50)
 - [ ] Add pagination progress logging
 - [ ] Test with mock data >100 items
 
@@ -56,18 +56,18 @@
 **Priority:** CRITICAL | **Estimated Time:** 4 hours
 **Reference:** BEST_PRACTICES.md:1109-1138
 
-- [ ] Add `queryAllPages()` method to `NotionAPI` class (`notion-api.js`)
-  - [ ] Accept `dataSourceId` and `filter` parameters
-  - [ ] Loop while `has_more` is true
-  - [ ] Pass `start_cursor` from previous response
-  - [ ] Set `page_size: 100` for efficiency
-  - [ ] Accumulate all results
-- [ ] Update `queryDataSource()` to optionally support pagination
-  - [ ] Add `paginateAll` parameter (default: false for backward compatibility)
-  - [ ] If true, call `queryAllPages()`
-- [ ] Update cache loading in `assignment-cache-manager.js`
-  - [ ] Use `queryAllPages()` when loading existing assignments
-  - [ ] Handle >100 cached assignments
+- [x] Add `queryAllPages()` method to `NotionAPI` class (`notion-api.js`)
+  - [x] Accept `dataSourceId` and `filter` parameters
+  - [x] Loop while `has_more` is true
+  - [x] Pass `start_cursor` from previous response
+  - [x] Set `page_size: 100` for efficiency
+  - [x] Accumulate all results
+- [x] Update `queryDataSource()` to optionally support pagination
+  - [x] Add `paginateAll` parameter (default: false for backward compatibility)
+  - [x] If true, call `queryAllPages()`
+- [x] Update cache loading in `assignment-cache-manager.js`
+  - [x] Use `queryAllPages()` when loading existing assignments
+  - [x] Handle >100 cached assignments
 - [ ] Add progress callback for long pagination operations
 - [ ] Test with >100 assignments in Notion database
 
@@ -101,27 +101,27 @@
 **Priority:** CRITICAL | **Estimated Time:** 5 hours
 **Reference:** BEST_PRACTICES.md:536-558
 
-- [ ] Create `src/validators/canvas-validator.js` file
-- [ ] Implement `validateCanvasAssignment(assignment)` function
-  - [ ] Check required field: `id` (must exist)
-  - [ ] Check required field: `name` (must be non-empty string)
-  - [ ] Validate `due_at` date format (ISO 8601)
-  - [ ] Validate `points_possible` (must be number >= 0 or null)
-  - [ ] Validate `course_id` (must exist)
-  - [ ] Add warnings for invalid data, set to null instead of throwing
-- [ ] Implement `isValidISO8601(dateString)` helper
-  - [ ] Use regex: `/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d{3})?Z)?$/`
-  - [ ] Return boolean
-- [ ] Apply validation in `content-script.js:180-196`
-  - [ ] Import validator
-  - [ ] Wrap each assignment in try-catch
-  - [ ] Log validation errors
-  - [ ] Skip invalid assignments or use defaults
-- [ ] Add unit tests for validation
-  - [ ] Test valid assignment
-  - [ ] Test missing required fields
-  - [ ] Test invalid date formats
-  - [ ] Test invalid points_possible values
+- [x] Create `src/validators/canvas-validator.js` file
+- [x] Implement `validateAssignment(assignment)` function
+  - [x] Check required field: `id` (must exist)
+  - [x] Check required field: `name` (must be non-empty string)
+  - [x] Validate `due_at` date format (ISO 8601)
+  - [x] Validate `points_possible` (must be number >= 0 or null)
+  - [x] Validate `course_id` (must exist)
+  - [x] Add warnings for invalid data, set to null instead of throwing
+- [x] Implement `validateCourse(course)` function
+  - [x] Check required field: `id` (must exist)
+  - [x] Validate `course_code` (must be string)
+- [x] Apply validation in `content-script.js`
+  - [x] Import validator via manifest content_scripts
+  - [x] Validate each assignment before transformation
+  - [x] Log validation warnings
+  - [x] Skip invalid assignments, use validated data for rest
+- [x] Add unit tests for validation
+  - [x] Test valid assignment
+  - [x] Test missing required fields
+  - [x] Test invalid date formats
+  - [x] Test invalid points_possible values
 
 ---
 
@@ -276,16 +276,23 @@
   - [x] Apply to course fetching
   - [x] Apply to assignment fetching
   - [x] Apply to submission fetching
-- [ ] Implement user-friendly error mapping
-  - [ ] Create `getUserFriendlyCanvasError(error)` function
-  - [ ] Map 401 → "Token invalid/expired"
-  - [ ] Map 403 → "Rate limit or permissions"
-  - [ ] Map 404 → "Not found"
-  - [ ] Map 500 → "Server error"
-  - [ ] Map 503 → "Service unavailable"
-- [ ] Update error messages shown to users
-  - [ ] Replace raw error messages with friendly versions
-  - [ ] Add actionable next steps
+- [x] Implement user-friendly error mapping
+  - [x] Create `getUserFriendlyCanvasError(error)` function in `src/utils/error-messages.js`
+  - [x] Create `getUserFriendlyNotionError(error)` function in `src/utils/error-messages.js`
+  - [x] Map 401 → "Token invalid/expired"
+  - [x] Map 403 → "Rate limit or permissions" (with rate limit auto-detection)
+  - [x] Map 404 → "Not found"
+  - [x] Map 500 → "Server error"
+  - [x] Map 503 → "Service unavailable"
+- [x] Update error messages shown to users
+  - [x] Replace raw error messages with friendly versions in background-handlers.js
+  - [x] Replace raw error messages with friendly versions in content-script.js
+  - [x] Add actionable next steps for each error type
+- [x] Add unit tests for error mapping
+  - [x] Test each Canvas status code mapping
+  - [x] Test each Notion status code mapping
+  - [x] Test rate limit detection in 403 errors
+  - [x] Test unknown status fallback
 - [ ] Test retry behavior
   - [ ] Mock transient errors
   - [ ] Verify exponential backoff timing
@@ -370,22 +377,20 @@
 **Priority:** HIGH | **Estimated Time:** 3 hours
 **Reference:** BEST_PRACTICES.md:220, 260-264
 
-- [ ] Update rate limits in `notion-rate-limiter.js`
-  - [ ] Change `maxRequestsPerSecond` from 25 to 5 (burst)
-  - [ ] Change `averageRequestsPerSecond` from 10 to 3 (average)
-  - [ ] Adjust `averageWindow` to 10 seconds (for 3 req/sec average)
-  - [ ] Update comments to reflect Notion guidelines
-- [ ] Remove or restrict `bypassRateLimit` flag
-  - [ ] Option 1: Remove entirely from `notion-api.js`
-  - [ ] Option 2: Only allow in test environment
-  - [ ] Add environment check if keeping
+- [x] Update rate limits in `notion-rate-limiter.js`
+  - [x] Change `maxRequestsPerSecond` from 25 to 5 (burst)
+  - [x] Change `averageRequestsPerSecond` from 10 to 3 (average)
+  - [x] Adjust `averageWindow` to 10 seconds (for 3 req/sec average)
+  - [x] Update comments to reflect Notion guidelines
+- [x] Remove `bypassRateLimit` flag
+  - [x] Remove entirely from `notion-api.js` constructor and all methods
+  - [x] Remove `bypassRateLimit: true` from `background-handlers.js`
+  - [x] All API methods now always use rate limiter + executeWithRetry
 - [ ] Test with adjusted limits
   - [ ] Verify 3 req/sec average is enforced
   - [ ] Verify burst handling still works
   - [ ] Test with large sync operations
-- [ ] Update documentation
-  - [ ] Update CLAUDE.md with new rate limits
-  - [ ] Update comments in code
+- [x] Update comments in code
 
 ---
 
@@ -664,37 +669,34 @@
 ## 📊 Progress Tracking
 
 ### Compliance Target
-- **Current:** 65% compliant
+- **Current:** ~78% compliant
 - **Target:** 90% compliant
-- **Estimated Timeline:** 4-6 weeks
 
 ### Completion by Priority
-- **Critical (7 items):** ☑☑☑☐☐☐☐ (3/7 complete)
-- **High (5 items):** ☑☐☐☐☐ (1/5 partially — rate limit retry done, error mapping remaining)
+- **Critical (7 items):** ☑☑☑☑☑☑☐ (6/7 complete — #7 test suite is ongoing)
+- **High (5 items):** ☑☑☐☐☐ (2/5 complete — #9 error mapping done, #12 rate limiter done)
 - **Medium (4 items):** ☐☐☐☐ (0/4 complete)
 - **Low (11 items):** ☐☐☐☐☐☐☐☐☐☐☐ (0/11 complete)
 
 ### Overall Progress
 ```
-Critical:    [████████████░░░░░░░░░░░░░░░░░░] 43%
-High:        [████░░░░░░░░░░░░░░░░░░░░░░░░░░] 12%
+Critical:    [█████████████████████████░░░░░] 86%
+High:        [████████████░░░░░░░░░░░░░░░░░░] 40%
 Medium:      [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 Low:         [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 ─────────────────────────────────────────────
-Total:       [█████░░░░░░░░░░░░░░░░░░░░░░░░░] 15%
+Total:       [█████████░░░░░░░░░░░░░░░░░░░░░] 30%
 ```
 
 ---
 
 ## 📝 Notes
 
-- Use `git checkout -b feature/name` for each implementation
 - Run tests after each change: `npm test`
 - Run security checks: `npm run check:security`
-- Run performance checks: `npm run check:performance`
 - Update this file as you complete items (check the boxes)
 - Reference the full compliance report for detailed explanations
 
 ---
 
-**Last Updated:** 2026-02-17
+**Last Updated:** 2026-02-18

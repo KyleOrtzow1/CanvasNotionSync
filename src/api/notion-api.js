@@ -5,7 +5,7 @@ const rateLimiter = new NotionRateLimiter();
 
 // Notion API Integration - Updated for new API structure
 export class NotionAPI {
-  constructor(token, options = {}) {
+  constructor(token) {
     this.token = token;
     this.baseURL = 'https://api.notion.com/v1';
     this.headers = {
@@ -13,7 +13,6 @@ export class NotionAPI {
       'Content-Type': 'application/json',
       'Notion-Version': '2025-09-03'
     };
-    this.bypassRateLimit = options.bypassRateLimit || false; // Option for personal use
   }
 
   // Get database info and data sources
@@ -28,7 +27,7 @@ export class NotionAPI {
         const errorText = await response.text();
         const error = new Error(`Notion API error: ${response.status} - ${errorText}`);
         error.status = response.status;
-        
+
         // Extract retry-after header for 429 responses
         if (response.status === 429) {
           const retryAfter = response.headers.get('Retry-After');
@@ -36,18 +35,14 @@ export class NotionAPI {
             error.retryAfter = parseInt(retryAfter) * 1000; // Convert to milliseconds
           }
         }
-        
+
         throw error;
       }
 
       return await response.json();
     };
 
-    // Bypass rate limiter for personal use
-    if (this.bypassRateLimit) {
-      return await requestFunction();
-    }
-    return await rateLimiter.execute(requestFunction);
+    return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'getDatabase'));
   }
 
   // Query data source (not database directly)
@@ -74,7 +69,7 @@ export class NotionAPI {
         const errorText = await response.text();
         const error = new Error(`Notion API error: ${response.status} - ${errorText}`);
         error.status = response.status;
-        
+
         // Extract retry-after header for 429 responses
         if (response.status === 429) {
           const retryAfter = response.headers.get('Retry-After');
@@ -82,18 +77,14 @@ export class NotionAPI {
             error.retryAfter = parseInt(retryAfter) * 1000; // Convert to milliseconds
           }
         }
-        
+
         throw error;
       }
 
       return await response.json();
     };
 
-    // Bypass rate limiter for personal use
-    if (this.bypassRateLimit) {
-      return await requestFunction();
-    }
-    return await rateLimiter.execute(requestFunction);
+    return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'queryDataSource'));
   }
 
   // Create page in data source
@@ -112,7 +103,7 @@ export class NotionAPI {
         const errorText = await response.text();
         const error = new Error(`Notion API error: ${response.status} - ${errorText}`);
         error.status = response.status;
-        
+
         // Extract retry-after header for 429 responses
         if (response.status === 429) {
           const retryAfter = response.headers.get('Retry-After');
@@ -120,18 +111,14 @@ export class NotionAPI {
             error.retryAfter = parseInt(retryAfter) * 1000; // Convert to milliseconds
           }
         }
-        
+
         throw error;
       }
 
       return await response.json();
     };
 
-    // Bypass rate limiter for personal use with 409 retry logic
-    if (this.bypassRateLimit) {
-      return await this.executeWithRetry(requestFunction, 'createPage');
-    }
-    return await rateLimiter.execute(requestFunction);
+    return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'createPage'));
   }
 
   // Get page by ID
@@ -160,10 +147,7 @@ export class NotionAPI {
       return await response.json();
     };
 
-    if (this.bypassRateLimit) {
-      return await requestFunction();
-    }
-    return await rateLimiter.execute(requestFunction);
+    return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'getPage'));
   }
 
   async updatePage(pageId, properties, options = {}) {
@@ -185,7 +169,7 @@ export class NotionAPI {
         const errorText = await response.text();
         const error = new Error(`Notion API error: ${response.status} - ${errorText}`);
         error.status = response.status;
-        
+
         // Extract retry-after header for 429 responses
         if (response.status === 429) {
           const retryAfter = response.headers.get('Retry-After');
@@ -193,70 +177,66 @@ export class NotionAPI {
             error.retryAfter = parseInt(retryAfter) * 1000; // Convert to milliseconds
           }
         }
-        
+
         throw error;
       }
 
       return await response.json();
     };
 
-    // Bypass rate limiter for personal use with 409 retry logic
-    if (this.bypassRateLimit) {
-      return await this.executeWithRetry(requestFunction, 'updatePage');
-    }
-    return await rateLimiter.execute(requestFunction);
+    return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'updatePage'));
   }
 
-  // Bulletproof retry logic for 409 conflicts and other errors
+  // Retry logic for 409 conflicts, 429 rate limits, and server errors
   async executeWithRetry(requestFunction, operationType, maxRetries = 5) {
     let lastError;
-    
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         const result = await requestFunction();
         return result;
       } catch (error) {
         lastError = error;
-        
+
         // Handle 409 conflicts with exponential backoff
         if (error.status === 409) {
           const delay = Math.min(200 * Math.pow(2, attempt - 1), 2000); // 200ms, 400ms, 800ms, 1600ms, 2000ms
-          console.log(`⚠️ ${operationType} conflict (409) on attempt ${attempt}/${maxRetries}, retrying in ${delay}ms...`);
-          
+          console.log(`${operationType} conflict (409) on attempt ${attempt}/${maxRetries}, retrying in ${delay}ms...`);
+
           if (attempt < maxRetries) {
             await new Promise(resolve => setTimeout(resolve, delay));
             continue;
           }
         }
-        
+
         // Handle 429 rate limits with exponential backoff + Retry-After
         if (error.status === 429) {
           const retryAfterDelay = error.retryAfter || 1000;
           const exponentialDelay = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s, 8s, 16s
           const delay = Math.max(retryAfterDelay, exponentialDelay);
 
-          console.log(`⚠️ ${operationType} rate limited (429) on attempt ${attempt}/${maxRetries}, retrying in ${delay}ms (Retry-After: ${retryAfterDelay}ms, exponential: ${exponentialDelay}ms)...`);
+          console.log(`${operationType} rate limited (429) on attempt ${attempt}/${maxRetries}, retrying in ${delay}ms...`);
 
           if (attempt < maxRetries) {
             await new Promise(resolve => setTimeout(resolve, delay));
             continue;
           }
         }
-        
+
         // For other errors, only retry a few times with shorter delays
         if (error.status >= 500 && attempt < 3) {
           const delay = 500 * attempt;
-          console.log(`⚠️ ${operationType} server error (${error.status}) on attempt ${attempt}/3, retrying in ${delay}ms...`);
+          console.log(`${operationType} server error (${error.status}) on attempt ${attempt}/3, retrying in ${delay}ms...`);
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
-        
+
         // If it's not a retryable error or we're out of retries, throw immediately
         break;
       }
     }
-    
-    console.error(`❌ ${operationType} failed:`, lastError.message);
+
+    console.error(`${operationType} failed:`, lastError.message);
     throw lastError;
   }
 }
