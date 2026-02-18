@@ -1,5 +1,5 @@
 // Canvas-Notion Sync: API-Only Assignment Extractor
-/* global CanvasRateLimiter */
+/* global CanvasRateLimiter, CanvasValidator, getUserFriendlyCanvasError */
 
 // Prevent multiple initialization
 if (!window.canvasNotionExtractorLoaded) {
@@ -93,7 +93,7 @@ class CanvasAPIExtractor {
         courses = await this.makeAPICall('/courses', {
           'enrollment_state': 'active',
           'per_page': 100
-        });
+        }, 10);
 
         // Cache the courses
         try {
@@ -137,7 +137,7 @@ class CanvasAPIExtractor {
               'per_page': 100,
               'order_by': 'due_at',
               'include': 'submission'
-            });
+            }, 50);
 
             // Cache the assignments
             try {
@@ -156,34 +156,43 @@ class CanvasAPIExtractor {
           // Transform to our format and fetch grades
           const transformedAssignments = [];
           for (const assignment of assignments) {
+            // Validate Canvas assignment data
+            const { valid, validated, warnings } = CanvasValidator.validateAssignment(assignment);
+            if (!valid) {
+              continue; // Skip entirely invalid assignments
+            }
+            if (warnings.length > 0) {
+              console.warn(`Canvas validation warnings for assignment ${validated.id}:`, warnings);
+            }
+
             let grade = null;
             let gradePercent = null;
             let submissionStatus = 'Not Started';
 
             // Get submission data if available (included via ?include=submission)
-            if (assignment.submission) {
-              const submission = assignment.submission;
+            if (validated.submission) {
+              const submission = validated.submission;
               if (submission.grade) {
                 grade = submission.grade;
               }
-              if (submission.score && assignment.points_possible) {
-                gradePercent = Math.round((submission.score / assignment.points_possible) * 100);
+              if (submission.score && validated.points_possible) {
+                gradePercent = Math.round((submission.score / validated.points_possible) * 100);
               }
               submissionStatus = this.getSubmissionStatus(submission);
             }
 
             transformedAssignments.push({
-              title: assignment.name,
+              title: validated.name,
               course: this.extractCourseInfo(course.course_code),
               courseCode: course.course_code,
               courseId: course.id.toString(),
-              dueDate: assignment.due_at,
-              points: assignment.points_possible,
-              canvasId: assignment.id.toString(),
-              link: assignment.html_url,
+              dueDate: validated.due_at,
+              points: validated.points_possible,
+              canvasId: validated.id.toString(),
+              link: validated.html_url,
               status: submissionStatus,
-              type: assignment.submission_types?.join(', ') || 'Assignment',
-              description: sanitizeHTML(assignment.description),
+              type: validated.submission_types?.join(', ') || 'Assignment',
+              description: sanitizeHTML(validated.description),
               grade: grade,
               gradePercent: gradePercent,
               source: 'canvas_api'
@@ -203,11 +212,30 @@ class CanvasAPIExtractor {
 
     } catch (error) {
       console.error('API extraction failed:', error.message);
+      if (typeof getUserFriendlyCanvasError === 'function') {
+        const friendly = getUserFriendlyCanvasError(error);
+        const friendlyError = new Error(`${friendly.title}: ${friendly.message} ${friendly.action}`);
+        friendlyError.status = error.status;
+        throw friendlyError;
+      }
       throw error;
     }
   }
 
-  async makeAPICall(endpoint, params = {}) {
+  parseLinkHeader(linkHeader) {
+    if (!linkHeader) return {};
+    const links = {};
+    const parts = linkHeader.split(',');
+    for (const part of parts) {
+      const match = part.match(/<([^>]+)>;\s*rel="([^"]+)"/);
+      if (match) {
+        links[match[2]] = match[1];
+      }
+    }
+    return links;
+  }
+
+  async makeSingleAPICall(endpoint, params = {}) {
     return this.rateLimiter.execute(async () => {
       const url = new URL(this.baseURL + endpoint);
 
@@ -215,43 +243,75 @@ class CanvasAPIExtractor {
         url.searchParams.append(key, params[key]);
       });
 
-      const headers = {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.canvasToken}`
-      };
-
-      // Create a safe fetch function to avoid illegal invocation
-      const safeFetch = (() => {
-        const originalFetch = window.fetch;
-        return function(...args) {
-          return originalFetch.apply(window, args);
-        };
-      })();
-
-      const response = await safeFetch(url.toString(), {
-        method: 'GET',
-        headers: headers,
-        credentials: 'include'
-      });
-
-      // Update rate limiter bucket from response headers
-      this.rateLimiter.updateFromHeaders(response.headers);
-
-      if (response.status === 403) {
-        const errorText = await response.text();
-        const error = new Error(`Canvas API error: 403 Forbidden - ${errorText}`);
-        error.status = 403;
-        throw error;
-      }
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Canvas API error: ${response.status} ${response.statusText} - ${errorText}`);
-      }
-
-      return await response.json();
+      return await this._fetchWithHeaders(url.toString());
     });
+  }
+
+  async makeSingleAPICallByURL(fullUrl) {
+    return this.rateLimiter.execute(async () => {
+      return await this._fetchWithHeaders(fullUrl);
+    });
+  }
+
+  async _fetchWithHeaders(urlString) {
+    const headers = {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${this.canvasToken}`
+    };
+
+    // Create a safe fetch function to avoid illegal invocation
+    const safeFetch = (() => {
+      const originalFetch = window.fetch;
+      return function(...args) {
+        return originalFetch.apply(window, args);
+      };
+    })();
+
+    const response = await safeFetch(urlString, {
+      method: 'GET',
+      headers: headers,
+      credentials: 'include'
+    });
+
+    // Update rate limiter bucket from response headers
+    this.rateLimiter.updateFromHeaders(response.headers);
+
+    if (response.status === 403) {
+      const errorText = await response.text();
+      const error = new Error(`Canvas API error: 403 Forbidden - ${errorText}`);
+      error.status = 403;
+      throw error;
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      const error = new Error(`Canvas API error: ${response.status} ${response.statusText} - ${errorText}`);
+      error.status = response.status;
+      throw error;
+    }
+
+    const data = await response.json();
+    const linkHeader = response.headers.get('Link');
+    return { data, links: this.parseLinkHeader(linkHeader) };
+  }
+
+  async makeAPICall(endpoint, params = {}, maxPages = 10) {
+    let allResults = [];
+
+    // First page
+    let result = await this.makeSingleAPICall(endpoint, params);
+    allResults = allResults.concat(result.data);
+    let pageCount = 1;
+
+    // Follow "next" links for subsequent pages
+    while (result.links.next && pageCount < maxPages) {
+      result = await this.makeSingleAPICallByURL(result.links.next);
+      allResults = allResults.concat(result.data);
+      pageCount++;
+    }
+
+    return allResults;
   }
 
   getAssignmentStatus(assignment) {

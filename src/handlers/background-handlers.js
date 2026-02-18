@@ -2,6 +2,7 @@ import { CredentialManager } from '../credentials/credential-manager.js';
 import { NotionAPI } from '../api/notion-api.js';
 import { AssignmentSyncer } from '../sync/assignment-syncer.js';
 import { AssignmentCacheManager } from '../cache/assignment-cache-manager.js';
+import { getUserFriendlyNotionError } from '../utils/error-messages.js';
 
 // Cache manager singleton instance
 let assignmentCacheInstance = null;
@@ -67,7 +68,7 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
       try {
         await chrome.scripting.executeScript({
           target: { tabId: activeTab.id },
-          files: ['src/api/canvas-rate-limiter.js', 'content-script.js']
+          files: ['src/utils/error-messages.js', 'src/validators/canvas-validator.js', 'src/api/canvas-rate-limiter.js', 'content-script.js']
         });
         
         // Wait for script to initialize
@@ -124,7 +125,7 @@ export async function handleAssignmentSync(assignments, activeCourseIds = []) {
       throw new Error('Notion credentials not configured');
     }
 
-    const notionAPI = new NotionAPI(credentials.notionToken, { bypassRateLimit: true });
+    const notionAPI = new NotionAPI(credentials.notionToken);
 
     // Pass unified cache to syncer
     const assignmentCache = getAssignmentCache();
@@ -143,7 +144,8 @@ export async function handleAssignmentSync(assignments, activeCourseIds = []) {
     return results;
   } catch (error) {
     console.error('Sync failed:', error.message);
-    showNotification('Sync Failed', error.message);
+    const friendly = getUserFriendlyNotionError(error);
+    showNotification(friendly.title, `${friendly.message} ${friendly.action}`);
     throw error;
   }
 }
@@ -152,7 +154,7 @@ export async function handleAssignmentSync(assignments, activeCourseIds = []) {
 export async function testNotionConnection(token, databaseId) {
   try {
     
-    const notionAPI = new NotionAPI(token, { bypassRateLimit: true });
+    const notionAPI = new NotionAPI(token);
     
     // First, try to get the database
     const database = await notionAPI.getDatabase(databaseId);
@@ -177,7 +179,8 @@ export async function testNotionConnection(token, databaseId) {
 
   } catch (error) {
     console.error('Connection test failed:', error.message);
-    return { success: false, error: error.message };
+    const friendly = getUserFriendlyNotionError(error);
+    return { success: false, error: `${friendly.title}: ${friendly.message} ${friendly.action}` };
   }
 }
 
