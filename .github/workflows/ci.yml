@@ -21,7 +21,7 @@ jobs:
       - run: npm ci
 
       - name: ESLint security audit
-        run: npx eslint . --ext .js --config .eslintrc.security.json --ignore-pattern '.github/'
+        run: npx eslint src/ --ext .js --config .eslintrc.security.json
 
   test:
     name: Test
