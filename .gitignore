@@ -46,6 +46,9 @@ key.pem
 dist/
 build/
 
+# Test coverage reports
+coverage/
+
 # Debug and test files (already removed but adding for future)
 debug-*.js
 test-*.js

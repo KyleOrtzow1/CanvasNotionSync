@@ -4,7 +4,7 @@
   "description": "Chrome extension to sync Canvas LMS assignments with Notion",
   "type": "module",
   "scripts": {
-    "test": "node --experimental-vm-modules node_modules/.bin/jest",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
     "lint": "eslint . --ext .js --config .eslintrc.security.json --ignore-pattern '.github/'",
     "check:security": "node .github/scripts/check-credentials.cjs && node .github/scripts/check-dangerous-functions.cjs && node .github/scripts/check-https.cjs && node .github/scripts/check-permissions.cjs && node .github/scripts/check-csp.cjs"
   },
