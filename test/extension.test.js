@@ -25,7 +25,7 @@ const mockStorage = {
 
 const messageListeners = [];
 
-global.chrome = {
+globalThis.chrome = {
   storage: { local: mockStorage },
   runtime: {
     onMessage: {
@@ -109,7 +109,7 @@ describe('testNotionConnection', () => {
   }
 
   test('returns success when database has data sources', async () => {
-    global.fetch = jest.fn()
+    globalThis.fetch = jest.fn()
       // First call: getDatabase
       .mockResolvedValueOnce(makeResponse({
         id: 'db1',
@@ -125,7 +125,7 @@ describe('testNotionConnection', () => {
   });
 
   test('returns failure when database has no data sources', async () => {
-    global.fetch = jest.fn().mockResolvedValueOnce(makeResponse({
+    globalThis.fetch = jest.fn().mockResolvedValueOnce(makeResponse({
       id: 'db1',
       data_sources: []
     }));
@@ -136,7 +136,7 @@ describe('testNotionConnection', () => {
   });
 
   test('returns failure on 401 unauthorized', async () => {
-    global.fetch = jest.fn().mockResolvedValue(
+    globalThis.fetch = jest.fn().mockResolvedValue(
       makeResponse({ message: 'unauthorized' }, 401)
     );
 

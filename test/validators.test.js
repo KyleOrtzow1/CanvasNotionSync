@@ -25,7 +25,7 @@ describe('Canvas data → validateAssignmentForNotion', () => {
       points: 20,
       link: 'https://canvas.example.com/lab'
     };
-    const { validated, warnings } = NotionValidator.validateAssignmentForNotion(assignment);
+    const { validated } = NotionValidator.validateAssignmentForNotion(assignment);
     // Description should have no script tags
     expect(validated.description).not.toContain('<script>');
     expect(validated.description).not.toContain('alert');
@@ -50,11 +50,10 @@ describe('Canvas data → validateAssignmentForNotion', () => {
   test('skips invalid URL and records a warning', () => {
     const { validated, warnings } = NotionValidator.validateAssignmentForNotion({
       title: 'Essay',
-      link: 'ftp://not-http'
+      link: 'not-a-valid-url'
     });
-    // ftp:// is a valid URL per the URL constructor so no skip —
-    // but if the URL is truly malformed this should be null
-    // Use an actually invalid URL to verify
+    expect(validated.link).toBeNull();
+    expect(warnings.some(w => w.includes('link'))).toBe(true);
   });
 
   test('skips invalid points and records a warning', () => {

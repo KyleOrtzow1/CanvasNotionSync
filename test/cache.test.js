@@ -24,7 +24,7 @@ const mockStorage = {
   })
 };
 
-global.chrome = {
+globalThis.chrome = {
   storage: { local: mockStorage }
 };
 
@@ -258,7 +258,7 @@ describe('AssignmentCacheManager', () => {
     await cache.cacheAssignment('400', sampleAssignment, 'page-6'); // courseId: '55'
     cache.setActiveCourses(['55']); // course 55 is active
     // Pass empty currentCanvasIds — assignment 400 is "deleted"
-    const { toDelete, toRemove } = await cache.cleanupInactiveCourses([]);
+    const { toDelete } = await cache.cleanupInactiveCourses([]);
     const deleted = toDelete.find(e => e.canvasId === '400');
     expect(deleted).toBeDefined();
     expect(deleted.notionPageId).toBe('page-6');

@@ -38,26 +38,26 @@ describe('NotionAPI.getDatabase', () => {
 
   beforeEach(() => {
     api = new NotionAPI('test-token');
-    global.fetch = jest.fn();
+    globalThis.fetch = jest.fn();
   });
 
   test('returns parsed JSON on 200', async () => {
     const payload = { id: 'db1', data_sources: [{ id: 'ds1', type: 'database' }] };
-    global.fetch.mockResolvedValueOnce(makeResponse(payload));
+    globalThis.fetch.mockResolvedValueOnce(makeResponse(payload));
     const result = await api.getDatabase('db1');
     expect(result.id).toBe('db1');
     expect(result.data_sources[0].id).toBe('ds1');
   });
 
   test('throws with status on non-200', async () => {
-    global.fetch.mockResolvedValueOnce(makeResponse({ message: 'not found' }, 404));
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ message: 'not found' }, 404));
     await expect(api.getDatabase('bad')).rejects.toMatchObject({ status: 404 });
   });
 
   test('attaches retryAfter on 429', async () => {
     // Override executeWithRetry to skip retries so we see the error immediately
     api.executeWithRetry = (fn) => fn();
-    global.fetch.mockResolvedValueOnce(
+    globalThis.fetch.mockResolvedValueOnce(
       makeResponse({ message: 'rate_limited' }, 429, { 'Retry-After': '2' })
     );
     const err = await api.getDatabase('db1').catch(e => e);
@@ -67,9 +67,9 @@ describe('NotionAPI.getDatabase', () => {
 
   test('includes Authorization header with Bearer token', async () => {
     const payload = { id: 'db1', data_sources: [{ id: 'ds1' }] };
-    global.fetch.mockResolvedValueOnce(makeResponse(payload));
+    globalThis.fetch.mockResolvedValueOnce(makeResponse(payload));
     await api.getDatabase('db1');
-    const [, opts] = global.fetch.mock.calls[0];
+    const [, opts] = globalThis.fetch.mock.calls[0];
     expect(opts.headers['Authorization']).toBe('Bearer test-token');
   });
 });
@@ -83,43 +83,43 @@ describe('NotionAPI.queryDataSource', () => {
 
   beforeEach(() => {
     api = new NotionAPI('test-token');
-    global.fetch = jest.fn();
+    globalThis.fetch = jest.fn();
   });
 
   test('returns results on success', async () => {
     const payload = { results: [{ id: 'page1' }], has_more: false };
-    global.fetch.mockResolvedValueOnce(makeResponse(payload));
+    globalThis.fetch.mockResolvedValueOnce(makeResponse(payload));
     const result = await api.queryDataSource('ds1', {});
     expect(result.results).toHaveLength(1);
   });
 
   test('sends filter in request body when provided', async () => {
-    global.fetch.mockResolvedValueOnce(makeResponse({ results: [], has_more: false }));
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ results: [], has_more: false }));
     const filter = { property: 'Name', rich_text: { equals: 'test' } };
     await api.queryDataSource('ds1', filter);
-    const [, opts] = global.fetch.mock.calls[0];
+    const [, opts] = globalThis.fetch.mock.calls[0];
     const body = JSON.parse(opts.body);
     expect(body.filter).toEqual(filter);
   });
 
   test('omits filter key when filter is empty object', async () => {
-    global.fetch.mockResolvedValueOnce(makeResponse({ results: [], has_more: false }));
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ results: [], has_more: false }));
     await api.queryDataSource('ds1', {});
-    const [, opts] = global.fetch.mock.calls[0];
+    const [, opts] = globalThis.fetch.mock.calls[0];
     const body = JSON.parse(opts.body);
     expect(body.filter).toBeUndefined();
   });
 
   test('passes start_cursor when provided in options', async () => {
-    global.fetch.mockResolvedValueOnce(makeResponse({ results: [], has_more: false }));
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ results: [], has_more: false }));
     await api.queryDataSource('ds1', {}, { start_cursor: 'cursor123' });
-    const [, opts] = global.fetch.mock.calls[0];
+    const [, opts] = globalThis.fetch.mock.calls[0];
     const body = JSON.parse(opts.body);
     expect(body.start_cursor).toBe('cursor123');
   });
 
   test('throws on 401', async () => {
-    global.fetch.mockResolvedValueOnce(makeResponse({ message: 'unauthorized' }, 401));
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ message: 'unauthorized' }, 401));
     await expect(api.queryDataSource('ds1', {})).rejects.toMatchObject({ status: 401 });
   });
 });
@@ -133,20 +133,20 @@ describe('NotionAPI.createPage', () => {
 
   beforeEach(() => {
     api = new NotionAPI('test-token');
-    global.fetch = jest.fn();
+    globalThis.fetch = jest.fn();
   });
 
   test('returns created page on 200', async () => {
     const payload = { id: 'new-page-id', properties: {} };
-    global.fetch.mockResolvedValueOnce(makeResponse(payload));
+    globalThis.fetch.mockResolvedValueOnce(makeResponse(payload));
     const result = await api.createPage('ds1', { title: 'Test' });
     expect(result.id).toBe('new-page-id');
   });
 
   test('sends data_source_id as parent type', async () => {
-    global.fetch.mockResolvedValueOnce(makeResponse({ id: 'p1' }));
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ id: 'p1' }));
     await api.createPage('ds42', {});
-    const [, opts] = global.fetch.mock.calls[0];
+    const [, opts] = globalThis.fetch.mock.calls[0];
     const body = JSON.parse(opts.body);
     expect(body.parent.type).toBe('data_source_id');
     expect(body.parent.data_source_id).toBe('ds42');
@@ -154,12 +154,12 @@ describe('NotionAPI.createPage', () => {
 
   test('throws 409 conflict error', async () => {
     // After retries, 409 should propagate
-    global.fetch.mockResolvedValue(makeResponse({ message: 'conflict' }, 409));
+    globalThis.fetch.mockResolvedValue(makeResponse({ message: 'conflict' }, 409));
     await expect(api.createPage('ds1', {})).rejects.toMatchObject({ status: 409 });
   });
 
   test('throws on 500 after limited retries', async () => {
-    global.fetch.mockResolvedValue(makeResponse({ message: 'server error' }, 500));
+    globalThis.fetch.mockResolvedValue(makeResponse({ message: 'server error' }, 500));
     await expect(api.createPage('ds1', {})).rejects.toMatchObject({ status: 500 });
   });
 });
@@ -173,26 +173,26 @@ describe('NotionAPI.updatePage', () => {
 
   beforeEach(() => {
     api = new NotionAPI('test-token');
-    global.fetch = jest.fn();
+    globalThis.fetch = jest.fn();
   });
 
   test('returns updated page on success', async () => {
     const payload = { id: 'page1', archived: false };
-    global.fetch.mockResolvedValueOnce(makeResponse(payload));
+    globalThis.fetch.mockResolvedValueOnce(makeResponse(payload));
     const result = await api.updatePage('page1', { Status: { select: { name: 'Done' } } });
     expect(result.id).toBe('page1');
   });
 
   test('sends archived flag when provided in options', async () => {
-    global.fetch.mockResolvedValueOnce(makeResponse({ id: 'page1' }));
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ id: 'page1' }));
     await api.updatePage('page1', {}, { archived: true });
-    const [, opts] = global.fetch.mock.calls[0];
+    const [, opts] = globalThis.fetch.mock.calls[0];
     const body = JSON.parse(opts.body);
     expect(body.archived).toBe(true);
   });
 
   test('throws 404 when page not found', async () => {
-    global.fetch.mockResolvedValueOnce(makeResponse({ message: 'not found' }, 404));
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ message: 'not found' }, 404));
     await expect(api.updatePage('missing', {})).rejects.toMatchObject({ status: 404 });
   });
 });
@@ -206,18 +206,18 @@ describe('NotionAPI.getPage', () => {
 
   beforeEach(() => {
     api = new NotionAPI('test-token');
-    global.fetch = jest.fn();
+    globalThis.fetch = jest.fn();
   });
 
   test('returns page data on 200', async () => {
     const payload = { id: 'page1', properties: { Status: { select: { name: 'To Do' } } } };
-    global.fetch.mockResolvedValueOnce(makeResponse(payload));
+    globalThis.fetch.mockResolvedValueOnce(makeResponse(payload));
     const result = await api.getPage('page1');
     expect(result.properties.Status.select.name).toBe('To Do');
   });
 
   test('throws on 404', async () => {
-    global.fetch.mockResolvedValueOnce(makeResponse({ message: 'not found' }, 404));
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ message: 'not found' }, 404));
     await expect(api.getPage('bad-id')).rejects.toMatchObject({ status: 404 });
   });
 });

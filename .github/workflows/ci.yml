@@ -31,13 +31,19 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
 
       - run: npm ci
 
       - name: Run tests
         run: npm test
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
 
   security:
     name: Security scan
@@ -61,4 +67,4 @@ jobs:
         run: node .github/scripts/check-csp.cjs
 
       - name: Audit dependencies
-        run: npm audit --audit-level=high
+        run: npm audit --audit-level=high --omit=dev

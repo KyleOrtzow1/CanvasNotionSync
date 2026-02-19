@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, jest } from '@jest/globals';
+import { describe, test, expect, beforeEach } from '@jest/globals';
 import '../src/api/canvas-rate-limiter.js';
 import '../src/validators/canvas-validator.js';
 

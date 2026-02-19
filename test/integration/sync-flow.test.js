@@ -3,7 +3,7 @@
  * Mocks fetch (Canvas + Notion APIs) and Chrome storage.
  * Drives AssignmentSyncer end-to-end with test fixtures.
  */
-import { describe, test, expect, beforeEach, jest } from '@jest/globals';
+import { describe, test, expect, jest } from '@jest/globals';
 
 // ---------------------------------------------------------------------------
 // Chrome storage mock — required by CacheManager before any imports
@@ -11,7 +11,7 @@ import { describe, test, expect, beforeEach, jest } from '@jest/globals';
 
 const mockStorageData = {};
 
-global.chrome = {
+globalThis.chrome = {
   storage: {
     local: {
       get: jest.fn(async (key) => {
@@ -88,12 +88,6 @@ function makeStatefulFetch({ onUpdate = null } = {}) {
       json: async () => body,
       text: async () => JSON.stringify(body)
     });
-    const err = (status, body = {}) => ({
-      ok: false, status,
-      headers: { get: () => null },
-      json: async () => body,
-      text: async () => JSON.stringify(body)
-    });
 
     // Database info
     if (url.match(/\/databases\//)) {
@@ -137,7 +131,7 @@ function makeStatefulFetch({ onUpdate = null } = {}) {
       const pageId = url.split('/').pop();
       const body = JSON.parse(opts.body || '{}');
       // Track archive status
-      for (const [k, v] of pages.entries()) {
+      for (const [, v] of pages.entries()) {
         if (v.pageId === pageId && body.archived === true) {
           v.archived = true;
         }
@@ -159,7 +153,7 @@ function makeStatefulFetch({ onUpdate = null } = {}) {
 describe('Integration — full sync creates new pages', () => {
   test('creates a Notion page for a brand-new assignment', async () => {
     const { fetchMock, pages } = makeStatefulFetch();
-    global.fetch = fetchMock;
+    globalThis.fetch = fetchMock;
     const api = new NotionAPI('test-token');
     const cache = new AssignmentCacheManager();
     const syncer = new AssignmentSyncer(api, DB_ID, cache);
@@ -175,7 +169,7 @@ describe('Integration — cache hit skips API call', () => {
   test('skips API update when assignment fields are unchanged', async () => {
     let updateCount = 0;
     const { fetchMock } = makeStatefulFetch({ onUpdate: () => { updateCount++; } });
-    global.fetch = fetchMock;
+    globalThis.fetch = fetchMock;
     const api = new NotionAPI('test-token');
     const cache = new AssignmentCacheManager();
     // Shared syncer — cache persists between calls
@@ -200,7 +194,7 @@ describe('Integration — update when assignment name changes', () => {
   test('sends PATCH to Notion when title changes', async () => {
     let patchCount = 0;
     const { fetchMock } = makeStatefulFetch({ onUpdate: () => { patchCount++; } });
-    global.fetch = fetchMock;
+    globalThis.fetch = fetchMock;
     const api = new NotionAPI('test-token');
     const cache = new AssignmentCacheManager();
     const syncer = new AssignmentSyncer(api, DB_ID, cache);
@@ -228,7 +222,7 @@ describe('Integration — deletion of removed Canvas assignments', () => {
         if (body.archived === true) archivedPageId = pageId;
       }
     });
-    global.fetch = fetchMock;
+    globalThis.fetch = fetchMock;
     const api = new NotionAPI('test-token');
     const cache = new AssignmentCacheManager();
     const syncer = new AssignmentSyncer(api, DB_ID, cache);
@@ -248,7 +242,7 @@ describe('Integration — deletion of removed Canvas assignments', () => {
 describe('Integration — 429 retry succeeds', () => {
   test('does not throw on 429 during page create', async () => {
     let createAttempts = 0;
-    global.fetch = jest.fn(async (url, opts) => {
+    globalThis.fetch = jest.fn(async (url, opts) => {
       const ok = (body) => ({ ok: true, status: 200, headers: { get: () => null },
         json: async () => body, text: async () => '' });
 
@@ -286,7 +280,7 @@ describe('Integration — concurrent sync calls', () => {
 
     // Alternate fetch mock for each call
     let callIndex = 0;
-    global.fetch = jest.fn(async (...args) => {
+    globalThis.fetch = jest.fn(async (...args) => {
       callIndex++;
       return callIndex % 2 === 0 ? fm1(...args) : fm2(...args);
     });
