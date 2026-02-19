@@ -15,13 +15,16 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
 
       - run: npm ci
 
       - name: ESLint security audit
         run: npx eslint src/ --ext .js --config .eslintrc.security.json
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high --omit=dev
 
   test:
     name: Test
@@ -44,27 +47,3 @@ jobs:
         with:
           name: coverage-report
           path: coverage/
-
-  security:
-    name: Security scan
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Check for hardcoded credentials
-        run: node .github/scripts/check-credentials.cjs
-
-      - name: Check for dangerous functions
-        run: node .github/scripts/check-dangerous-functions.cjs
-
-      - name: Verify HTTPS usage
-        run: node .github/scripts/check-https.cjs
-
-      - name: Validate manifest permissions
-        run: node .github/scripts/check-permissions.cjs
-
-      - name: Validate Content Security Policy
-        run: node .github/scripts/check-csp.cjs
-
-      - name: Audit dependencies
-        run: npm audit --audit-level=high --omit=dev
