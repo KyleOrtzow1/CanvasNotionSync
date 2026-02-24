@@ -93,7 +93,7 @@ export function setupMessageHandlers() {
       case 'CLEANUP_STORAGE':
         (async () => {
           const assignmentCache = getAssignmentCache();
-          const result = await cleanupOldCache(assignmentCache);
+          const result = await cleanupOldCache(assignmentCache, { force: true });
           sendResponse({ success: true, result });
         })();
         return true;

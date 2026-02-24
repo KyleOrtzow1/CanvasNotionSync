@@ -139,6 +139,23 @@ describe('cleanupOldCache', () => {
     expect(result.entriesRemoved).toBe(0);
   });
 
+  test('force mode evicts entries even when below target', async () => {
+    // 5% usage — well below 70% target
+    chrome.storage.local.getBytesInUse.mockResolvedValue(524288);
+    mockCache.cache.set('a', { value: 1 });
+    mockCache.cache.set('b', { value: 2 });
+    mockCache.cache.set('c', { value: 3 });
+
+    mockCache.evictLRU.mockImplementation(async () => {
+      const firstKey = mockCache.cache.keys().next().value;
+      mockCache.cache.delete(firstKey);
+    });
+
+    const result = await cleanupOldCache(mockCache, { force: true });
+    expect(result.entriesRemoved).toBe(3);
+    expect(mockCache.cache.size).toBe(0);
+  });
+
   test('respects max eviction cap of 50', async () => {
     // Always above target
     chrome.storage.local.getBytesInUse.mockResolvedValue(9437184);
