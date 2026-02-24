@@ -6,7 +6,7 @@ import '../utils/debug.js';
 const { Debug } = globalThis;
 import '../utils/error-messages.js';
 const { getUserFriendlyNotionError } = globalThis;
-import { checkStorageQuota, cleanupOldCache, THRESHOLDS } from '../utils/storage-monitor.js';
+import { checkStorageQuota, cleanupOldCache } from '../utils/storage-monitor.js';
 
 // Cache manager singleton instance
 let assignmentCacheInstance = null;
@@ -281,7 +281,7 @@ export async function checkStorageAfterSync() {
 
     if (quotaInfo.status === 'critical') {
       Debug.warn(`Storage critical: ${quotaInfo.formattedUsed} / ${quotaInfo.formattedQuota} (${quotaInfo.percentUsed.toFixed(1)}%)`);
-      const result = await cleanupOldCache(getAssignmentCache());
+      await cleanupOldCache(getAssignmentCache());
       const afterQuota = await checkStorageQuota();
       if (afterQuota.status === 'critical') {
         showNotification('Storage Warning', `Storage is nearly full (${afterQuota.percentUsed.toFixed(0)}%). Consider clearing old data.`);
