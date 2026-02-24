@@ -29,7 +29,7 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
     if (forceRefresh) {
       const assignmentCache = getAssignmentCache();
       await assignmentCache.clearAll();
-      Debug.log('🔄 Cache cleared due to force refresh');
+      Debug.log('Cache cleared due to force refresh');
     }
 
     const credentials = await CredentialManager.getCredentials();
@@ -115,7 +115,7 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
 
 
   } catch (error) {
-    console.error('Background sync failed:', error.message);
+    Debug.error('Background sync failed:', error.message);
     throw error;
   }
 }
@@ -146,7 +146,7 @@ export async function handleAssignmentSync(assignments, activeCourseIds = []) {
 
     return results;
   } catch (error) {
-    console.error('Sync failed:', error.message);
+    Debug.error('Sync failed:', error.message);
     const friendly = getUserFriendlyNotionError(error);
     showNotification(friendly.title, `${friendly.message} ${friendly.action}`);
     throw error;
@@ -181,7 +181,7 @@ export async function testNotionConnection(token, databaseId) {
 
 
   } catch (error) {
-    console.error('Connection test failed:', error.message);
+    Debug.error('Connection test failed:', error.message);
     const friendly = getUserFriendlyNotionError(error);
     return { success: false, error: `${friendly.title}: ${friendly.message} ${friendly.action}` };
   }

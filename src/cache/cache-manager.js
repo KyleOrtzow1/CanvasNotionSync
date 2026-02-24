@@ -119,7 +119,7 @@ export class CacheManager {
     if (this.enablePersistence) {
       await chrome.storage.local.remove(this.storageKey);
     }
-    Debug.log('🗑️ Cache cleared');
+    Debug.log('Cache cleared');
   }
 
   /**
@@ -138,7 +138,7 @@ export class CacheManager {
     }
 
     if (deletedCount > 0) {
-      Debug.log(`🗑️ Invalidated ${deletedCount} cache entries matching "${pattern}"`);
+      Debug.log(`Invalidated ${deletedCount} cache entries matching "${pattern}"`);
       if (this.enablePersistence) {
         await this.persistToStorage();
       }
@@ -198,7 +198,7 @@ export class CacheManager {
 
       await chrome.storage.local.set({ [this.storageKey]: serialized });
     } catch (error) {
-      console.error('Failed to persist cache:', error.message);
+      Debug.error('Failed to persist cache:', error.message);
     }
   }
 
@@ -224,10 +224,10 @@ export class CacheManager {
           }
         }
 
-        Debug.log(`✅ Loaded ${loadedCount} cache entries from storage`);
+        Debug.log(`Loaded ${loadedCount} cache entries from storage`);
       }
     } catch (error) {
-      console.error('Failed to load persistent cache:', error.message);
+      Debug.error('Failed to load persistent cache:', error.message);
     }
   }
 
@@ -246,7 +246,7 @@ export class CacheManager {
     }
 
     if (cleanedCount > 0) {
-      Debug.log(`🧹 Cleaned up ${cleanedCount} expired cache entries`);
+      Debug.log(`Cleaned up ${cleanedCount} expired cache entries`);
     }
   }
 }

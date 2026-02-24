@@ -238,7 +238,7 @@ export class NotionAPI {
       }
     }
 
-    console.error(`${operationType} failed:`, lastError.message);
+    Debug.error(`${operationType} failed:`, lastError.message);
     throw lastError;
   }
 }

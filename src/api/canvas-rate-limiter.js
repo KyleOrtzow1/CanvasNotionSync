@@ -65,7 +65,7 @@ class CanvasRateLimiter {
               requestFunction, resolve, reject, attempt: attempt + 1
             });
           } else {
-            console.error('Canvas rate limiter: max retries reached (5 attempts)');
+            Debug.error('Canvas rate limiter: max retries reached (5 attempts)');
             reject(error);
           }
         } else {

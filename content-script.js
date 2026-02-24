@@ -213,7 +213,7 @@ class CanvasAPIExtractor {
       };
 
     } catch (error) {
-      console.error('API extraction failed:', error.message);
+      Debug.error('API extraction failed:', error.message);
       if (typeof getUserFriendlyCanvasError === 'function') {
         const friendly = getUserFriendlyCanvasError(error);
         const friendlyError = new Error(`${friendly.title}: ${friendly.message} ${friendly.action}`);
