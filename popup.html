@@ -250,7 +250,18 @@
     <button id="manualSyncBtn" class="btn">
       <span class="btn-text">Sync Now</span>
     </button>
-    
+
+    <div id="storageSection" style="margin-top: 12px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #666; margin-bottom: 4px;">
+        <span>Storage</span>
+        <span id="storageText">-- / --</span>
+      </div>
+      <div style="height: 6px; background: #e9ecef; border-radius: 3px; overflow: hidden;">
+        <div id="storageBar" style="height: 100%; width: 0%; background: #2e7d32; transition: width 0.3s ease, background 0.3s ease;"></div>
+      </div>
+      <div id="storageWarning" class="hidden" style="font-size: 11px; color: #dc3545; margin-top: 4px;"></div>
+    </div>
+
     <div style="display: flex; justify-content: center; margin-top: 12px;">
       <button id="expandBtn" class="btn-expand">⚙️ Settings</button>
     </div>
@@ -283,6 +294,7 @@
       <button id="testBtn" class="btn btn-secondary">Test Notion</button>
       <button id="testCanvasBtn" class="btn btn-secondary">Test Canvas API</button>
       <button id="clearDataBtn" class="btn btn-danger">Clear All Data</button>
+      <button id="cleanupCacheBtn" class="btn btn-secondary">Clear Old Cache</button>
       <div class="form-group" style="margin-top: 16px; padding-top: 12px; border-top: 1px solid #eee;">
         <label style="display: flex; align-items: center; cursor: pointer;">
           <input type="checkbox" id="debugMode" style="margin-right: 8px;">

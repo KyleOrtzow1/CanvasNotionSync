@@ -6,6 +6,7 @@ import '../utils/debug.js';
 const { Debug } = globalThis;
 import '../utils/error-messages.js';
 const { getUserFriendlyNotionError } = globalThis;
+import { checkStorageQuota, cleanupOldCache } from '../utils/storage-monitor.js';
 
 // Cache manager singleton instance
 let assignmentCacheInstance = null;
@@ -111,6 +112,8 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
     // Update last sync time
     await chrome.storage.local.set({ lastSync: Date.now() });
 
+    await checkStorageAfterSync();
+
     return { success: true, results, assignmentCount: response.assignments.length };
 
 
@@ -138,6 +141,8 @@ export async function handleAssignmentSync(assignments, activeCourseIds = []) {
 
     // Update last sync time
     await chrome.storage.local.set({ lastSync: Date.now() });
+
+    await checkStorageAfterSync();
 
     // Show notification with detailed stats
     const message = `Created: ${results.created.length}, Updated: ${results.updated.length}, Skipped: ${results.skipped.length}`;
@@ -252,6 +257,7 @@ export function setupSecurityHandlers() {
   });
 
   // Additional cleanup on startup (in case previous cleanup failed)
+
   chrome.runtime.onStartup.addListener(async () => {
     try {
       // Check if we have orphaned encryption keys without credentials
@@ -264,4 +270,26 @@ export function setupSecurityHandlers() {
       // Silent fail - cleanup will retry on next startup
     }
   });
+}
+
+/**
+ * Check storage quota after sync and auto-cleanup if critical
+ */
+export async function checkStorageAfterSync() {
+  try {
+    const quotaInfo = await checkStorageQuota();
+
+    if (quotaInfo.status === 'critical') {
+      Debug.warn(`Storage critical: ${quotaInfo.formattedUsed} / ${quotaInfo.formattedQuota} (${quotaInfo.percentUsed.toFixed(1)}%)`);
+      await cleanupOldCache(getAssignmentCache());
+      const afterQuota = await checkStorageQuota();
+      if (afterQuota.status === 'critical') {
+        showNotification('Storage Warning', `Storage is nearly full (${afterQuota.percentUsed.toFixed(0)}%). Consider clearing old data.`);
+      }
+    } else if (quotaInfo.status === 'warning') {
+      Debug.warn(`Storage warning: ${quotaInfo.formattedUsed} / ${quotaInfo.formattedQuota} (${quotaInfo.percentUsed.toFixed(1)}%)`);
+    }
+  } catch (error) {
+    Debug.error('Storage quota check failed:', error.message);
+  }
 }

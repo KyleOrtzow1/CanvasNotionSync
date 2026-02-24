@@ -20,7 +20,9 @@ const mockStorage = {
     if (typeof key === 'string') delete mockStorage._data[key];
     if (Array.isArray(key)) key.forEach(k => delete mockStorage._data[k]);
   }),
-  clear: jest.fn(async () => { mockStorage._data = {}; })
+  clear: jest.fn(async () => { mockStorage._data = {}; }),
+  getBytesInUse: jest.fn(async () => 1048576),
+  QUOTA_BYTES: 10485760
 };
 
 const messageListeners = [];
@@ -194,6 +196,21 @@ describe('setupMessageHandlers — message routing', () => {
   test('CLEAR_CACHE returns success', async () => {
     const response = await sendMessage({ action: 'CLEAR_CACHE' });
     expect(response.success).toBe(true);
+  });
+
+  test('GET_STORAGE_QUOTA returns quota info', async () => {
+    const response = await sendMessage({ action: 'GET_STORAGE_QUOTA' });
+    expect(response.success).toBe(true);
+    expect(response.quota).toBeDefined();
+    expect(response.quota.bytesInUse).toBeDefined();
+    expect(response.quota.status).toBeDefined();
+  });
+
+  test('CLEANUP_STORAGE returns cleanup result', async () => {
+    const response = await sendMessage({ action: 'CLEANUP_STORAGE' });
+    expect(response.success).toBe(true);
+    expect(response.result).toBeDefined();
+    expect(typeof response.result.entriesRemoved).toBe('number');
   });
 
   test('STORE_CREDENTIALS is handled (returns success or error shape)', async () => {
