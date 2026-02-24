@@ -1,4 +1,6 @@
 import { NotionValidator } from '../validators/notion-validator.js';
+import '../utils/debug.js';
+const { Debug } = globalThis;
 
 // Assignment synchronization logic with unified cache system
 export class AssignmentSyncer {
@@ -24,7 +26,7 @@ export class AssignmentSyncer {
 
       return { success: true, dataSourceId: this.dataSourceId };
     } catch (error) {
-      console.error('Failed to initialize syncer:', error.message);
+      Debug.error('Failed to initialize syncer:', error.message);
       throw error;
     }
   }
@@ -48,7 +50,7 @@ export class AssignmentSyncer {
       }
       return null;
     } catch (error) {
-      console.warn(`Could not search for existing page with Canvas ID ${canvasId}:`, error.message);
+      Debug.warn(`Could not search for existing page with Canvas ID ${canvasId}:`, error.message);
       return null;
     }
   }
@@ -161,7 +163,7 @@ export class AssignmentSyncer {
     const { validated, warnings } = NotionValidator.validateAssignmentForNotion(assignment);
 
     if (warnings.length > 0) {
-      console.warn(`⚠️ Validation warnings for "${assignment.title || assignment.canvasId}":`,
+      Debug.warn(`Validation warnings for "${assignment.title || assignment.canvasId}":`,
         warnings.join('; '));
     }
 
@@ -234,7 +236,7 @@ export class AssignmentSyncer {
       await this.initialize();
     }
 
-    console.log(`\n🔄 Starting unified cache sync for ${assignments.length} Canvas assignments`);
+    Debug.log(`Starting unified cache sync for ${assignments.length} Canvas assignments`);
 
     // Build Canvas assignment map early so we can pass IDs to reconciliation
     const canvasAssignmentMap = new Map();
@@ -254,31 +256,31 @@ export class AssignmentSyncer {
     this._notionTruthMap = null;
     if (this.assignmentCache) {
       try {
-        console.log('🔍 Reconciling cache with Notion...');
+        Debug.log('Reconciling cache with Notion...');
         const truthMap = await this.fetchAllNotionPages();
-        console.log(`📄 Found ${truthMap.size} existing pages in Notion`);
+        Debug.log(`Found ${truthMap.size} existing pages in Notion`);
 
         const reconcileStats = await this.reconcileCache(truthMap, currentCanvasIdSet);
         if (reconcileStats.fixed > 0 || reconcileStats.populated > 0 || reconcileStats.orphaned > 0) {
-          console.log(
-            `🔧 Cache reconciliation: ${reconcileStats.fixed} fixed, ` +
+          Debug.log(
+            `Cache reconciliation: ${reconcileStats.fixed} fixed, ` +
             `${reconcileStats.populated} populated, ${reconcileStats.orphaned} orphaned removed`
           );
         }
 
         this._notionTruthMap = truthMap;
       } catch (error) {
-        console.warn('⚠️ Cache reconciliation failed, continuing with existing cache:', error.message);
+        Debug.warn('Cache reconciliation failed, continuing with existing cache:', error.message);
       }
     }
 
     // Step 1: Set active courses for deletion detection
     if (this.assignmentCache && activeCourseIds.length > 0) {
       this.assignmentCache.setActiveCourses(activeCourseIds);
-      console.log(`📚 Tracking ${activeCourseIds.length} active courses`);
+      Debug.log(`Tracking ${activeCourseIds.length} active courses`);
     }
 
-    console.log(`📋 Processing ${canvasIds.length} assignments with Canvas IDs`);
+    Debug.log(`Processing ${canvasIds.length} assignments with Canvas IDs`);
 
     // Step 3: Process each assignment with field-level change detection
     const results = {
@@ -304,7 +306,7 @@ export class AssignmentSyncer {
 
           if (existingPageId) {
             // Page exists in Notion but wasn't in cache — update instead of create
-            console.log(`🔗 Found existing Notion page for "${assignment.title}", updating instead of creating`);
+            Debug.log(`Found existing Notion page for "${assignment.title}", updating instead of creating`);
             await this.notionAPI.updatePage(existingPageId, properties);
 
             if (this.assignmentCache) {
@@ -356,13 +358,13 @@ export class AssignmentSyncer {
           } catch (updateError) {
             // If the page was archived/trashed in Notion, find the live page or create new
             if (updateError.message && updateError.message.includes('archived')) {
-              console.log(`♻️ Cached page archived in Notion for "${assignment.title}", searching for live page...`);
+              Debug.log(`Cached page archived in Notion for "${assignment.title}", searching for live page...`);
 
               const existingPage = await this.findLivePageByCanvasId(canvasId);
 
               if (existingPage) {
                 // Found a live page — update it and fix the cache
-                console.log(`🔗 Found existing live page for "${assignment.title}", updating`);
+                Debug.log(`Found existing live page for "${assignment.title}", updating`);
                 await this.notionAPI.updatePage(existingPage.id, properties);
 
                 if (this.assignmentCache) {
@@ -403,7 +405,7 @@ export class AssignmentSyncer {
         }
 
       } catch (error) {
-        console.error(`❌ Error syncing assignment ${assignment.title}:`, error.message);
+        Debug.error(`Error syncing assignment ${assignment.title}:`, error.message);
         results.errors.push({
           canvasId,
           title: assignment.title,
@@ -417,7 +419,7 @@ export class AssignmentSyncer {
 
     // Step 4: Handle deleted assignments
     if (this.assignmentCache && activeCourseIds.length > 0) {
-      console.log(`\n🗑️  Checking for deleted assignments...`);
+      Debug.log('Checking for deleted assignments...');
       const cleanup = await this.assignmentCache.cleanupInactiveCourses(canvasIds);
 
       // Delete from Notion (active courses only)
@@ -431,7 +433,7 @@ export class AssignmentSyncer {
 
           results.deleted.push({ canvasId, courseId, notionPageId });
         } catch (error) {
-          console.error(`❌ Failed to delete assignment ${canvasId}:`, error.message);
+          Debug.error(`Failed to delete assignment ${canvasId}:`, error.message);
           results.errors.push({
             canvasId,
             error: `Deletion failed: ${error.message}`
@@ -446,7 +448,7 @@ export class AssignmentSyncer {
         await this.assignmentCache.removeAssignment(canvasId);
       }
 
-      console.log(`✅ Cleanup complete: ${cleanup.toDelete.length} deleted, ${cleanup.toRemove.length} archived from cache`);
+      Debug.log(`Cleanup complete: ${cleanup.toDelete.length} deleted, ${cleanup.toRemove.length} archived from cache`);
     }
 
     // Step 5: Print summary
@@ -478,7 +480,7 @@ export class AssignmentSyncer {
       }
     } catch (error) {
       // If we can't fetch the current page, just use the new status
-      console.warn(`Could not fetch existing status for status preservation:`, error.message);
+      Debug.warn(`Could not fetch existing status for status preservation:`, error.message);
     }
   }
 
@@ -489,26 +491,21 @@ export class AssignmentSyncer {
     const total = results.created.length + results.updated.length +
                   results.skipped.length + results.deleted.length + results.errors.length;
 
-    console.log(`\n📊 Sync Summary:`);
-    console.log(`   Total assignments: ${total}`);
-    console.log(`   ➕ Created: ${results.created.length}`);
-    console.log(`   🔄 Updated: ${results.updated.length}`);
-    console.log(`   ⏭️  Skipped (no changes): ${results.skipped.length}`);
-    console.log(`   🗑️  Deleted: ${results.deleted.length}`);
-    console.log(`   ❌ Errors: ${results.errors.length}`);
-
-    if (results.skipped.length > 0) {
-      const apiSavings = ((results.skipped.length / total) * 100).toFixed(1);
-      console.log(`\n💡 API call reduction: ${apiSavings}% (${results.skipped.length}/${total} assignments unchanged)`);
-    }
+    Debug.log(`Sync Summary:`);
+    Debug.log(`  Total assignments: ${total}`);
+    Debug.log(`  Created: ${results.created.length}`);
+    Debug.log(`  Updated: ${results.updated.length}`);
+    Debug.log(`  Skipped (no changes): ${results.skipped.length}`);
+    Debug.log(`  Deleted: ${results.deleted.length}`);
+    Debug.log(`  Errors: ${results.errors.length}`);
 
     if (results.errors.length > 0) {
-      console.warn(`\n⚠️  Errors encountered:`);
+      Debug.warn('Errors encountered:');
       results.errors.forEach(err => {
-        console.warn(`   - ${err.title || err.canvasId}: ${err.error}`);
+        Debug.warn(`  - ${err.title || err.canvasId}: ${err.error}`);
       });
     } else {
-      console.log(`\n✅ Sync completed successfully!`);
+      Debug.log('Sync completed successfully');
     }
   }
 }

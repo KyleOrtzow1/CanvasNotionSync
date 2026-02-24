@@ -2,6 +2,8 @@ import { CredentialManager } from '../credentials/credential-manager.js';
 import { NotionAPI } from '../api/notion-api.js';
 import { AssignmentSyncer } from '../sync/assignment-syncer.js';
 import { AssignmentCacheManager } from '../cache/assignment-cache-manager.js';
+import '../utils/debug.js';
+const { Debug } = globalThis;
 import '../utils/error-messages.js';
 const { getUserFriendlyNotionError } = globalThis;
 
@@ -27,7 +29,7 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
     if (forceRefresh) {
       const assignmentCache = getAssignmentCache();
       await assignmentCache.clearAll();
-      console.log('🔄 Cache cleared due to force refresh');
+      Debug.log('Cache cleared due to force refresh');
     }
 
     const credentials = await CredentialManager.getCredentials();
@@ -69,7 +71,7 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
       try {
         await chrome.scripting.executeScript({
           target: { tabId: activeTab.id },
-          files: ['src/utils/error-messages.js', 'src/validators/canvas-validator.js', 'src/api/canvas-rate-limiter.js', 'content-script.js']
+          files: ['src/utils/debug.js', 'src/utils/error-messages.js', 'src/validators/canvas-validator.js', 'src/api/canvas-rate-limiter.js', 'content-script.js']
         });
         
         // Wait for script to initialize
@@ -113,7 +115,7 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
 
 
   } catch (error) {
-    console.error('Background sync failed:', error.message);
+    Debug.error('Background sync failed:', error.message);
     throw error;
   }
 }
@@ -144,7 +146,7 @@ export async function handleAssignmentSync(assignments, activeCourseIds = []) {
 
     return results;
   } catch (error) {
-    console.error('Sync failed:', error.message);
+    Debug.error('Sync failed:', error.message);
     const friendly = getUserFriendlyNotionError(error);
     showNotification(friendly.title, `${friendly.message} ${friendly.action}`);
     throw error;
@@ -179,7 +181,7 @@ export async function testNotionConnection(token, databaseId) {
 
 
   } catch (error) {
-    console.error('Connection test failed:', error.message);
+    Debug.error('Connection test failed:', error.message);
     const friendly = getUserFriendlyNotionError(error);
     return { success: false, error: `${friendly.title}: ${friendly.message} ${friendly.action}` };
   }

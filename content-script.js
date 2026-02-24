@@ -1,9 +1,11 @@
 // Canvas-Notion Sync: API-Only Assignment Extractor
-/* global CanvasRateLimiter, CanvasValidator, getUserFriendlyCanvasError */
+/* global CanvasRateLimiter, CanvasValidator, getUserFriendlyCanvasError, Debug */
 
 // Prevent multiple initialization
 if (!window.canvasNotionExtractorLoaded) {
   window.canvasNotionExtractorLoaded = true;
+
+Debug.init();
 
 // Sanitize HTML from Canvas API descriptions to safe plain text (XSS prevention)
 const sanitizeHTML = (html) => {
@@ -162,7 +164,7 @@ class CanvasAPIExtractor {
               continue; // Skip entirely invalid assignments
             }
             if (warnings.length > 0) {
-              console.warn(`Canvas validation warnings for assignment ${validated.id}:`, warnings);
+              Debug.warn(`Canvas validation warnings for assignment ${validated.id}:`, warnings);
             }
 
             let grade = null;
@@ -211,7 +213,7 @@ class CanvasAPIExtractor {
       };
 
     } catch (error) {
-      console.error('API extraction failed:', error.message);
+      Debug.error('API extraction failed:', error.message);
       if (typeof getUserFriendlyCanvasError === 'function') {
         const friendly = getUserFriendlyCanvasError(error);
         const friendlyError = new Error(`${friendly.title}: ${friendly.message} ${friendly.action}`);
@@ -240,7 +242,7 @@ class CanvasAPIExtractor {
       const url = new URL(this.baseURL + endpoint);
 
       Object.keys(params).forEach(key => {
-        url.searchParams.append(key, params[key]);
+        url.searchParams.append(key, params[key]); // eslint-disable-line security/detect-object-injection -- key from Object.keys()
       });
 
       return await this._fetchWithHeaders(url.toString());

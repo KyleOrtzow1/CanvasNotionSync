@@ -237,25 +237,25 @@
 **Priority:** HIGH | **Estimated Time:** 4 hours
 **Reference:** BEST_PRACTICES.md:1342-1346
 
-- [ ] Create debug flag system
-  - [ ] Add `DEBUG_MODE` constant in `src/utils/debug.js`
-  - [ ] Implement `debug.log()`, `debug.warn()`, `debug.error()` wrappers
-  - [ ] Check debug flag before logging
-- [ ] Replace console.log in `content-script.js`
-  - [ ] Replace all `console.log()` with `debug.log()`
-  - [ ] Keep error logs as `console.error()` or use `debug.error()`
-- [ ] Replace console.log in `assignment-syncer.js`
-  - [ ] Replace verbose logging with debug calls
-  - [ ] Keep summary logs for users
-- [ ] Replace console.log in `notion-rate-limiter.js`
-  - [ ] Gate retry logs behind debug flag
-- [ ] Replace console.log in `cache-manager.js`
-  - [ ] Gate cache operation logs
-- [ ] Add setting in popup to enable debug mode
-  - [ ] Add checkbox in settings
-  - [ ] Store preference in chrome.storage
-  - [ ] Load preference on startup
-- [ ] Update all other files with console.log statements
+- [x] Create debug flag system
+  - [x] Add `DEBUG_MODE` constant in `src/utils/debug.js`
+  - [x] Implement `debug.log()`, `debug.warn()`, `debug.error()` wrappers
+  - [x] Check debug flag before logging
+- [x] Replace console.log in `content-script.js`
+  - [x] Replace all `console.log()` with `debug.log()`
+  - [x] Keep error logs as `console.error()` or use `debug.error()`
+- [x] Replace console.log in `assignment-syncer.js`
+  - [x] Replace verbose logging with debug calls
+  - [x] Keep summary logs for users
+- [x] Replace console.log in `notion-rate-limiter.js`
+  - [x] Gate retry logs behind debug flag
+- [x] Replace console.log in `cache-manager.js`
+  - [x] Gate cache operation logs
+- [x] Add setting in popup to enable debug mode
+  - [x] Add checkbox in settings
+  - [x] Store preference in chrome.storage
+  - [x] Load preference on startup
+- [x] Update all other files with console.log statements
 
 ---
 
@@ -674,18 +674,18 @@
 
 ### Completion by Priority
 - **Critical (7 items):** ☑☑☑☑☑☑☑ (7/7 complete)
-- **High (5 items):** ☑☑☐☐☐ (2/5 complete — #9 error mapping done, #12 rate limiter done)
+- **High (5 items):** ☑☑☑☐☐ (3/5 complete — #8 debug logging done, #9 error mapping done, #12 rate limiter done)
 - **Medium (4 items):** ☐☐☐☐ (0/4 complete)
 - **Low (11 items):** ☐☐☐☐☐☐☐☐☐☐☐ (0/11 complete)
 
 ### Overall Progress
 ```
 Critical:    [██████████████████████████████] 100%
-High:        [████████████░░░░░░░░░░░░░░░░░░] 40%
+High:        [██████████████████░░░░░░░░░░░░] 60%
 Medium:      [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 Low:         [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 ─────────────────────────────────────────────
-Total:       [███████████░░░░░░░░░░░░░░░░░░░] 35%
+Total:       [████████████░░░░░░░░░░░░░░░░░░] 39%
 ```
 
 ---
@@ -699,4 +699,4 @@ Total:       [███████████░░░░░░░░░░░
 
 ---
 
-**Last Updated:** 2026-02-19
+**Last Updated:** 2026-02-22

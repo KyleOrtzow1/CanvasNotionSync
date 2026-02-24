@@ -1,4 +1,6 @@
 import { NotionRateLimiter } from './notion-rate-limiter.js';
+import '../utils/debug.js';
+const { Debug } = globalThis;
 
 // Create a shared rate limiter instance
 const rateLimiter = new NotionRateLimiter();
@@ -201,7 +203,7 @@ export class NotionAPI {
         // Handle 409 conflicts with exponential backoff
         if (error.status === 409) {
           const delay = Math.min(200 * Math.pow(2, attempt - 1), 2000); // 200ms, 400ms, 800ms, 1600ms, 2000ms
-          console.log(`${operationType} conflict (409) on attempt ${attempt}/${maxRetries}, retrying in ${delay}ms...`);
+          Debug.log(`${operationType} conflict (409) on attempt ${attempt}/${maxRetries}, retrying in ${delay}ms...`);
 
           if (attempt < maxRetries) {
             await new Promise(resolve => setTimeout(resolve, delay));
@@ -215,7 +217,7 @@ export class NotionAPI {
           const exponentialDelay = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s, 8s, 16s
           const delay = Math.max(retryAfterDelay, exponentialDelay);
 
-          console.log(`${operationType} rate limited (429) on attempt ${attempt}/${maxRetries}, retrying in ${delay}ms...`);
+          Debug.log(`${operationType} rate limited (429) on attempt ${attempt}/${maxRetries}, retrying in ${delay}ms...`);
 
           if (attempt < maxRetries) {
             await new Promise(resolve => setTimeout(resolve, delay));
@@ -226,7 +228,7 @@ export class NotionAPI {
         // For other errors, only retry a few times with shorter delays
         if (error.status >= 500 && attempt < 3) {
           const delay = 500 * attempt;
-          console.log(`${operationType} server error (${error.status}) on attempt ${attempt}/3, retrying in ${delay}ms...`);
+          Debug.log(`${operationType} server error (${error.status}) on attempt ${attempt}/3, retrying in ${delay}ms...`);
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
@@ -236,7 +238,7 @@ export class NotionAPI {
       }
     }
 
-    console.error(`${operationType} failed:`, lastError.message);
+    Debug.error(`${operationType} failed:`, lastError.message);
     throw lastError;
   }
 }

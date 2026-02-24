@@ -1,3 +1,6 @@
+import '../utils/debug.js';
+const { Debug } = globalThis;
+
 /**
  * Generic cache manager with TTL, LRU eviction, and optional persistence
  * @class CacheManager
@@ -116,7 +119,7 @@ export class CacheManager {
     if (this.enablePersistence) {
       await chrome.storage.local.remove(this.storageKey);
     }
-    console.log('🗑️ Cache cleared');
+    Debug.log('Cache cleared');
   }
 
   /**
@@ -124,7 +127,7 @@ export class CacheManager {
    * @param {string} pattern - Pattern to match (e.g., "canvas:course:*")
    */
   async invalidate(pattern) {
-    const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+    const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$'); // eslint-disable-line security/detect-non-literal-regexp -- pattern from internal callers only
     let deletedCount = 0;
 
     for (const key of this.cache.keys()) {
@@ -135,7 +138,7 @@ export class CacheManager {
     }
 
     if (deletedCount > 0) {
-      console.log(`🗑️ Invalidated ${deletedCount} cache entries matching "${pattern}"`);
+      Debug.log(`Invalidated ${deletedCount} cache entries matching "${pattern}"`);
       if (this.enablePersistence) {
         await this.persistToStorage();
       }
@@ -189,13 +192,13 @@ export class CacheManager {
       for (const [key, entry] of this.cache.entries()) {
         // Only persist non-expired entries
         if (Date.now() < entry.expiresAt) {
-          serialized[key] = entry;
+          serialized[key] = entry; // eslint-disable-line security/detect-object-injection -- key from internal Map iterator
         }
       }
 
       await chrome.storage.local.set({ [this.storageKey]: serialized });
     } catch (error) {
-      console.error('Failed to persist cache:', error.message);
+      Debug.error('Failed to persist cache:', error.message);
     }
   }
 
@@ -221,10 +224,10 @@ export class CacheManager {
           }
         }
 
-        console.log(`✅ Loaded ${loadedCount} cache entries from storage`);
+        Debug.log(`Loaded ${loadedCount} cache entries from storage`);
       }
     } catch (error) {
-      console.error('Failed to load persistent cache:', error.message);
+      Debug.error('Failed to load persistent cache:', error.message);
     }
   }
 
@@ -243,7 +246,7 @@ export class CacheManager {
     }
 
     if (cleanedCount > 0) {
-      console.log(`🧹 Cleaned up ${cleanedCount} expired cache entries`);
+      Debug.log(`Cleaned up ${cleanedCount} expired cache entries`);
     }
   }
 }

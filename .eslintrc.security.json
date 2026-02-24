@@ -8,7 +8,7 @@
     "eslint:recommended"
   ],
   "parserOptions": {
-    "ecmaVersion": 2021,
+    "ecmaVersion": 2022,
     "sourceType": "module"
   },
   "plugins": [
@@ -35,5 +35,20 @@
     "no-implied-eval": "error",
     "no-new-func": "error",
     "no-console": "warn"
-  }
+  },
+  "overrides": [
+    {
+      "files": ["test/**/*.js"],
+      "rules": {
+        "no-console": "off",
+        "security/detect-object-injection": "off"
+      }
+    },
+    {
+      "files": ["src/utils/debug.js"],
+      "rules": {
+        "no-console": "off"
+      }
+    }
+  ]
 }
