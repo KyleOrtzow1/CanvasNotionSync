@@ -1,3 +1,6 @@
+import '../utils/debug.js';
+const { Debug } = globalThis;
+
 // Optimized Rate limiter for Notion API with burst support
 export class NotionRateLimiter {
   constructor() {
@@ -69,7 +72,7 @@ export class NotionRateLimiter {
           const exponentialDelay = Math.pow(2, currentAttempt) * 1000; // 2s, 4s, 8s, 16s...
           const finalDelay = Math.max(retryAfterDelay, exponentialDelay);
 
-          console.log(`⚠️ Rate limited (429), attempt ${currentAttempt}, waiting ${finalDelay}ms (Retry-After: ${retryAfterDelay}ms, exponential: ${exponentialDelay}ms)`);
+          Debug.log(`⚠️ Rate limited (429), attempt ${currentAttempt}, waiting ${finalDelay}ms (Retry-After: ${retryAfterDelay}ms, exponential: ${exponentialDelay}ms)`);
 
           // Max 5 retry attempts for rate limits
           if (currentAttempt >= 5) {

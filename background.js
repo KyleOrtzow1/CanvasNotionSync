@@ -1,6 +1,8 @@
 // Canvas-Notion Sync Background Service Worker
 
 // Import all modules
+import './src/utils/debug.js';
+const { Debug } = globalThis;
 import { setupMessageHandlers } from './src/handlers/message-handlers.js';
 import { setupNavigationHandlers, setupPeriodicSync, setupSecurityHandlers, getAssignmentCache } from './src/handlers/background-handlers.js';
 
@@ -10,8 +12,9 @@ setupNavigationHandlers();
 setupPeriodicSync();
 setupSecurityHandlers();
 
-// Initialize and load assignment cache
+// Initialize debug mode and load assignment cache
 (async () => {
+  await Debug.init();
   const assignmentCache = getAssignmentCache();
   await assignmentCache.loadPersistentCache();
   assignmentCache.cleanupExpired();

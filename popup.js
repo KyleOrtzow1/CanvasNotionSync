@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const syncStatusElement = document.getElementById('syncStatus');
   const expandBtn = document.getElementById('expandBtn');
   const settingsSection = document.getElementById('settingsSection');
+  const debugModeCheckbox = document.getElementById('debugMode');
 
   // Load existing configuration
   loadConfiguration();
@@ -25,6 +26,7 @@ document.addEventListener('DOMContentLoaded', function() {
   manualSyncBtn.addEventListener('click', handleManualSync);
   if (expandBtn) expandBtn.addEventListener('click', toggleSettings);
   if (clearDataBtn) clearDataBtn.addEventListener('click', handleClearAllData);
+  if (debugModeCheckbox) debugModeCheckbox.addEventListener('change', handleDebugModeToggle);
 
   async function loadConfiguration() {
     try {
@@ -52,6 +54,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
       // Update sync status based on configuration completeness
       updateSyncStatus();
+
+      // Load debug mode setting
+      const debugResult = await chrome.storage.local.get('debugMode');
+      if (debugModeCheckbox) {
+        debugModeCheckbox.checked = debugResult.debugMode === true;
+      }
 
     } catch (error) {
       showStatus('Failed to load configuration', 'error');
@@ -300,6 +308,12 @@ document.addEventListener('DOMContentLoaded', function() {
     } finally {
       resetSyncButton();
     }
+  }
+
+  async function handleDebugModeToggle() {
+    const enabled = debugModeCheckbox.checked;
+    await chrome.storage.local.set({ debugMode: enabled });
+    chrome.runtime.sendMessage({ action: 'SET_DEBUG_MODE', enabled: enabled }).catch(() => {});
   }
 
   function updateSyncStatus() {

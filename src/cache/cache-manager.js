@@ -1,3 +1,6 @@
+import '../utils/debug.js';
+const { Debug } = globalThis;
+
 /**
  * Generic cache manager with TTL, LRU eviction, and optional persistence
  * @class CacheManager
@@ -116,7 +119,7 @@ export class CacheManager {
     if (this.enablePersistence) {
       await chrome.storage.local.remove(this.storageKey);
     }
-    console.log('🗑️ Cache cleared');
+    Debug.log('🗑️ Cache cleared');
   }
 
   /**
@@ -135,7 +138,7 @@ export class CacheManager {
     }
 
     if (deletedCount > 0) {
-      console.log(`🗑️ Invalidated ${deletedCount} cache entries matching "${pattern}"`);
+      Debug.log(`🗑️ Invalidated ${deletedCount} cache entries matching "${pattern}"`);
       if (this.enablePersistence) {
         await this.persistToStorage();
       }
@@ -221,7 +224,7 @@ export class CacheManager {
           }
         }
 
-        console.log(`✅ Loaded ${loadedCount} cache entries from storage`);
+        Debug.log(`✅ Loaded ${loadedCount} cache entries from storage`);
       }
     } catch (error) {
       console.error('Failed to load persistent cache:', error.message);
@@ -243,7 +246,7 @@ export class CacheManager {
     }
 
     if (cleanedCount > 0) {
-      console.log(`🧹 Cleaned up ${cleanedCount} expired cache entries`);
+      Debug.log(`🧹 Cleaned up ${cleanedCount} expired cache entries`);
     }
   }
 }

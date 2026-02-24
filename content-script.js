@@ -1,9 +1,11 @@
 // Canvas-Notion Sync: API-Only Assignment Extractor
-/* global CanvasRateLimiter, CanvasValidator, getUserFriendlyCanvasError */
+/* global CanvasRateLimiter, CanvasValidator, getUserFriendlyCanvasError, Debug */
 
 // Prevent multiple initialization
 if (!window.canvasNotionExtractorLoaded) {
   window.canvasNotionExtractorLoaded = true;
+
+Debug.init();
 
 // Sanitize HTML from Canvas API descriptions to safe plain text (XSS prevention)
 const sanitizeHTML = (html) => {
@@ -162,7 +164,7 @@ class CanvasAPIExtractor {
               continue; // Skip entirely invalid assignments
             }
             if (warnings.length > 0) {
-              console.warn(`Canvas validation warnings for assignment ${validated.id}:`, warnings);
+              Debug.warn(`Canvas validation warnings for assignment ${validated.id}:`, warnings);
             }
 
             let grade = null;

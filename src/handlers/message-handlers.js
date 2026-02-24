@@ -76,6 +76,11 @@ export function setupMessageHandlers() {
           sendResponse({ success: true });
         })();
         return true;
+
+      case 'SET_DEBUG_MODE':
+        globalThis.Debug.setEnabled(request.enabled);
+        sendResponse({ success: true });
+        return false;
     }
   });
 }

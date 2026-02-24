@@ -1,4 +1,6 @@
 import { NotionValidator } from '../validators/notion-validator.js';
+import '../utils/debug.js';
+const { Debug } = globalThis;
 
 // Assignment synchronization logic with unified cache system
 export class AssignmentSyncer {
@@ -48,7 +50,7 @@ export class AssignmentSyncer {
       }
       return null;
     } catch (error) {
-      console.warn(`Could not search for existing page with Canvas ID ${canvasId}:`, error.message);
+      Debug.warn(`Could not search for existing page with Canvas ID ${canvasId}:`, error.message);
       return null;
     }
   }
@@ -161,7 +163,7 @@ export class AssignmentSyncer {
     const { validated, warnings } = NotionValidator.validateAssignmentForNotion(assignment);
 
     if (warnings.length > 0) {
-      console.warn(`⚠️ Validation warnings for "${assignment.title || assignment.canvasId}":`,
+      Debug.warn(`⚠️ Validation warnings for "${assignment.title || assignment.canvasId}":`,
         warnings.join('; '));
     }
 
@@ -268,7 +270,7 @@ export class AssignmentSyncer {
 
         this._notionTruthMap = truthMap;
       } catch (error) {
-        console.warn('⚠️ Cache reconciliation failed, continuing with existing cache:', error.message);
+        Debug.warn('⚠️ Cache reconciliation failed, continuing with existing cache:', error.message);
       }
     }
 
@@ -478,7 +480,7 @@ export class AssignmentSyncer {
       }
     } catch (error) {
       // If we can't fetch the current page, just use the new status
-      console.warn(`Could not fetch existing status for status preservation:`, error.message);
+      Debug.warn(`Could not fetch existing status for status preservation:`, error.message);
     }
   }
 

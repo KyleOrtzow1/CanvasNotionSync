@@ -1,6 +1,7 @@
 // Canvas API Rate Limiter using leaky bucket algorithm
 // Canvas uses a cost-based leaky bucket: 700-unit capacity, 10 units/second leak rate.
 // Rate limit responses are 403 (not 429). Headers: X-Request-Cost, X-Rate-Limit-Remaining.
+/* global Debug */
 
 class CanvasRateLimiter {
   constructor() {
@@ -55,7 +56,7 @@ class CanvasRateLimiter {
         if (this._isRateLimitError(error)) {
           if (attempt < this.maxRetries) {
             const backoffDelay = this._calculateBackoff(attempt);
-            console.log(
+            Debug.log(
               `Canvas rate limited (403), attempt ${attempt + 1}/${this.maxRetries}, ` +
               `waiting ${backoffDelay}ms before retry`
             );
