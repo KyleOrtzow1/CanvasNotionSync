@@ -330,21 +330,21 @@
 **Reference:** BEST_PRACTICES.md:1419-1467
 
 #### Sync Log Viewer
-- [ ] Create `src/utils/sync-logger.js`
-  - [ ] Implement `SyncLogger` class
-  - [ ] Log each sync operation with timestamp
-  - [ ] Store last 100 log entries in chrome.storage
-  - [ ] Format logs with severity levels (info, warning, error)
-- [ ] Update `assignment-syncer.js` to use sync logger
-  - [ ] Log sync start/complete
-  - [ ] Log each create/update/skip/delete
-  - [ ] Log errors with context
-- [ ] Add log viewer to popup UI
-  - [ ] Create new "Sync Logs" section (collapsible)
-  - [ ] Display last 20 logs
-  - [ ] Color-code by severity
-  - [ ] Add "View All" button to expand
-  - [ ] Add "Clear Logs" button
+- [x] Create `src/utils/sync-logger.js`
+  - [x] Implement `SyncLogger` class
+  - [x] Log each sync operation with timestamp
+  - [x] Store last 100 log entries in chrome.storage
+  - [x] Format logs with severity levels (info, warning, error)
+- [x] Update `assignment-syncer.js` to use sync logger
+  - [x] Log sync start/complete
+  - [x] Log each create/update/skip/delete
+  - [x] Log errors with context
+- [x] Add log viewer to popup UI
+  - [x] Create new "Sync Logs" section (collapsible)
+  - [x] Display last 20 logs
+  - [x] Color-code by severity
+  - [x] Add "View All" button to expand
+  - [x] Add "Clear Logs" button
 
 #### Error Count Display
 - [ ] Track error counts in sync status
@@ -673,18 +673,18 @@
 
 ### Completion by Priority
 - **Critical (7 items):** ☑☑☑☑☑☑☑ (7/7 complete)
-- **High (5 items):** ☑☑☑☑☐ (4/5 complete — #8 debug logging done, #9 error mapping done, #10 storage monitoring done, #12 rate limiter done)
+- **High (5 items):** ☑☑☑☑☑ (5/5 complete — #8 debug logging done, #9 error mapping done, #10 storage monitoring done, #11 sync log viewer done, #12 rate limiter done)
 - **Medium (4 items):** ☐☐☐☐ (0/4 complete)
 - **Low (11 items):** ☐☐☐☐☐☐☐☐☐☐☐ (0/11 complete)
 
 ### Overall Progress
 ```
 Critical:    [██████████████████████████████] 100%
-High:        [██████████████████████░░░░░░░░] 80%
+High:        [██████████████████████████████] 100%
 Medium:      [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 Low:         [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 ─────────────────────────────────────────────
-Total:       [█████████████░░░░░░░░░░░░░░░░░] 42%
+Total:       [███████████████░░░░░░░░░░░░░░░] 46%
 ```
 
 ---
@@ -698,4 +698,4 @@ Total:       [█████████████░░░░░░░░░
 
 ---
 
-**Last Updated:** 2026-02-23
+**Last Updated:** 2026-02-24
