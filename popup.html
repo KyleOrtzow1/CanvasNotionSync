@@ -298,6 +298,57 @@
       padding: 16px 0;
     }
 
+    #syncStatus {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 220px;
+    }
+
+    #syncStatus.has-errors {
+      color: #dc3545;
+      cursor: pointer;
+      font-weight: 500;
+    }
+
+    #syncStatus.has-errors:hover {
+      text-decoration: underline;
+    }
+
+    .errors-section.hidden {
+      display: none;
+    }
+
+    .error-entry {
+      display: flex;
+      gap: 8px;
+      padding: 6px 0;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .error-entry:last-child {
+      border-bottom: none;
+    }
+
+    .error-entry-title {
+      font-weight: 500;
+      color: #333;
+      flex-shrink: 0;
+    }
+
+    .error-entry-message {
+      color: #dc3545;
+      word-break: break-word;
+    }
+
+    .error-container {
+      max-height: 200px;
+      overflow-y: auto;
+      padding: 4px 0;
+    }
+
     @keyframes slideDown {
       from {
         opacity: 0;
@@ -321,8 +372,8 @@
   <!-- Simple sync section (always visible) -->
   <div class="section">
     <div class="sync-info">
-      <span>Last sync: <span id="lastSync">Never</span></span>
       <span id="syncStatus">Ready</span>
+      <span>Last sync: <span id="lastSync">Never</span></span>
     </div>
     
     <button id="manualSyncBtn" class="btn">
@@ -356,6 +407,16 @@
       <div class="log-actions">
         <button id="viewAllLogsBtn">View All</button>
         <button id="clearLogsBtn">Clear Logs</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Collapsible errors section -->
+  <div id="errorsSection" class="errors-section hidden">
+    <div class="section">
+      <h3>Sync Errors</h3>
+      <div id="errorContainer" class="error-container">
+        <div class="log-empty">No errors</div>
       </div>
     </div>
   </div>

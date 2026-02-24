@@ -24,6 +24,8 @@ document.addEventListener('DOMContentLoaded', function() {
   const logContainer = document.getElementById('logContainer');
   const viewAllLogsBtn = document.getElementById('viewAllLogsBtn');
   const clearLogsBtn = document.getElementById('clearLogsBtn');
+  const errorsSection = document.getElementById('errorsSection');
+  const errorContainer = document.getElementById('errorContainer');
 
   // Load existing configuration
   loadConfiguration();
@@ -40,6 +42,9 @@ document.addEventListener('DOMContentLoaded', function() {
   if (logsExpandBtn) logsExpandBtn.addEventListener('click', toggleLogs);
   if (viewAllLogsBtn) viewAllLogsBtn.addEventListener('click', () => loadSyncLogs(100));
   if (clearLogsBtn) clearLogsBtn.addEventListener('click', clearSyncLogs);
+  syncStatusElement.addEventListener('click', () => {
+    if (syncStatusElement.classList.contains('has-errors')) toggleErrors();
+  });
 
   async function loadConfiguration() {
     try {
@@ -256,12 +261,13 @@ document.addEventListener('DOMContentLoaded', function() {
   function resetSyncButton() {
     const button = manualSyncBtn;
     const buttonText = button.querySelector('.btn-text');
-    
+
     button.classList.remove('btn-progress');
     button.style.removeProperty('--progress');
     button.disabled = false;
     buttonText.textContent = 'Sync Now';
     syncStatusElement.textContent = 'Ready';
+    syncStatusElement.classList.remove('has-errors');
   }
 
   async function handleManualSync() {
@@ -273,54 +279,37 @@ document.addEventListener('DOMContentLoaded', function() {
       const canvasToken = canvasTokenInput.value.trim();
       if (!canvasToken) {
         showStatus('Canvas API token is required. Please add your Canvas API token first.', 'error');
+        resetSyncButton();
         return;
       }
 
-      updateSyncProgress('connecting', 20, 'Connecting to Canvas...');
-      
-      // Add some progress steps to make it feel more responsive
-      await new Promise(resolve => setTimeout(resolve, 300));
-      updateSyncProgress('extracting', 40, 'Extracting assignments...');
-      
-      await new Promise(resolve => setTimeout(resolve, 200));
-      updateSyncProgress('syncing', 60, 'Syncing to Notion...');
-
-      // Start background sync
+      // Start background sync — progress updates come via storage listener
       const syncResult = await chrome.runtime.sendMessage({
         action: 'START_BACKGROUND_SYNC',
         canvasToken: canvasToken
       });
 
       if (syncResult.success) {
-        updateSyncProgress('finishing', 90, 'Finalizing sync...');
-        
-        // Use the total assignment count from background sync
         const totalAssignments = syncResult.assignmentCount || 0;
 
-        // Ensure results is an array before filtering
-        const results = Array.isArray(syncResult.results) ? syncResult.results : [];
-        const errorCount = results.filter(r => r.action === 'error').length;
-
         updateSyncProgress('complete', 100, `Synced ${totalAssignments} assignments!`);
-        
-        // Brief pause to show completion
         await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        let message = `✅ Synced ${totalAssignments} assignments via Canvas API`;
+
+        let message = `Synced ${totalAssignments} assignments via Canvas API`;
+        const errorCount = syncResult.results?.errors?.length || 0;
         if (errorCount > 0) {
           message += `, ${errorCount} errors`;
         }
-        
+
         showStatus(message, totalAssignments > 0 ? 'success' : 'error');
-        
-        // Update last sync time display
         lastSyncElement.textContent = formatDate(new Date());
         await loadStorageQuota();
+        loadErrorStats();
       } else {
-        showStatus('❌ Sync failed: ' + syncResult.error, 'error');
+        showStatus('Sync failed: ' + syncResult.error, 'error');
       }
     } catch (error) {
-      showStatus('❌ Sync failed: ' + error.message, 'error');
+      showStatus('Sync failed: ' + error.message, 'error');
     } finally {
       resetSyncButton();
     }
@@ -555,6 +544,97 @@ document.addEventListener('DOMContentLoaded', function() {
       showStatus('Failed to clear logs', 'error');
     }
   }
+
+  // Listen for real-time sync progress updates
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local') return;
+
+    if (changes.sync_progress) {
+      const p = changes.sync_progress.newValue;
+      if (!p || !p.active) return;
+
+      let percent = 0;
+      let text = 'Syncing...';
+
+      switch (p.phase) {
+        case 'extracting':
+          percent = 15;
+          text = 'Extracting assignments...';
+          break;
+        case 'reconciling':
+          percent = 25;
+          text = 'Reconciling cache...';
+          break;
+        case 'syncing':
+          percent = p.total > 0 ? 25 + Math.round((p.current / p.total) * 65) : 50;
+          text = `Syncing ${p.current}/${p.total}...`;
+          break;
+        case 'cleanup':
+          percent = 92;
+          text = 'Cleaning up...';
+          break;
+        case 'complete':
+          percent = 100;
+          text = 'Complete!';
+          break;
+      }
+
+      updateSyncProgress(p.phase, percent, text);
+
+      if (p.currentTitle) {
+        const truncated = p.currentTitle.length > 25
+          ? p.currentTitle.slice(0, 25) + '...'
+          : p.currentTitle;
+        syncStatusElement.textContent = `Updating: ${truncated}`;
+      }
+    }
+  });
+
+  // Error stats functions
+  async function loadErrorStats() {
+    try {
+      const data = await chrome.storage.local.get('sync_error_stats');
+      const stats = data.sync_error_stats;
+      if (stats && stats.lastSyncErrorCount > 0) {
+        syncStatusElement.textContent = `${stats.lastSyncErrorCount} error${stats.lastSyncErrorCount !== 1 ? 's' : ''}`;
+        syncStatusElement.classList.add('has-errors');
+        renderErrors(stats.lastSyncErrors || []);
+      } else {
+        syncStatusElement.classList.remove('has-errors');
+        errorsSection.classList.add('hidden');
+      }
+    } catch (error) {
+      // Non-critical
+    }
+  }
+
+  function renderErrors(errors) {
+    if (!errors || errors.length === 0) {
+      errorContainer.innerHTML = '<div class="log-empty">No errors</div>';
+      return;
+    }
+
+    errorContainer.innerHTML = errors.map(err => {
+      const title = escapeHtml(err.title || err.canvasId || 'Unknown');
+      const message = escapeHtml(err.error || 'Unknown error');
+      return `<div class="error-entry">` +
+        `<span class="error-entry-title">${title}:</span>` +
+        `<span class="error-entry-message">${message}</span>` +
+        `</div>`;
+    }).join('');
+  }
+
+  function toggleErrors() {
+    const isHidden = errorsSection.classList.contains('hidden');
+    if (isHidden) {
+      errorsSection.classList.remove('hidden');
+    } else {
+      errorsSection.classList.add('hidden');
+    }
+  }
+
+  // Load error stats on startup
+  loadErrorStats();
 
   // Update sync status when inputs change
   notionTokenInput.addEventListener('input', updateSyncStatus);

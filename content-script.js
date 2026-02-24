@@ -444,5 +444,53 @@ const addSyncButton = () => {
 // Add button after page loads
 setTimeout(addSyncButton, 2000);
 
+// Listen for real-time sync progress and update button text
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !changes.sync_progress) return;
+  const btn = document.querySelector('#canvas-notion-sync-btn');
+  if (!btn) return;
+
+  const p = changes.sync_progress.newValue;
+  if (!p) return;
+
+  if (p.active) {
+    btn.disabled = true;
+    switch (p.phase) {
+      case 'extracting':
+        btn.textContent = 'Extracting...';
+        break;
+      case 'reconciling':
+        btn.textContent = 'Reconciling...';
+        break;
+      case 'syncing': {
+        const pct = p.total > 0 ? Math.round((p.current / p.total) * 100) : 0;
+        btn.textContent = `Syncing ${p.current}/${p.total} (${pct}%)`;
+        break;
+      }
+      case 'cleanup':
+        btn.textContent = 'Cleaning up...';
+        break;
+      case 'complete': {
+        const msg = p.errorCount > 0
+          ? `Done (${p.errorCount} errors)`
+          : 'Sync complete!';
+        btn.textContent = msg;
+        setTimeout(() => {
+          btn.textContent = 'Sync to Notion';
+          btn.disabled = false;
+        }, 3000);
+        break;
+      }
+      case 'error':
+        btn.textContent = 'Sync failed';
+        setTimeout(() => {
+          btn.textContent = 'Sync to Notion';
+          btn.disabled = false;
+        }, 3000);
+        break;
+    }
+  }
+});
+
 
 } // End of initialization block

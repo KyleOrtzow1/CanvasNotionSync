@@ -93,6 +93,11 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
     // Wait a moment for content script to be ready
     await new Promise(resolve => setTimeout(resolve, 100));
 
+    // Write initial progress state
+    await chrome.storage.local.set({
+      sync_progress: { active: true, phase: 'extracting', current: 0, total: 0, errorCount: 0, errors: [], startedAt: Date.now() }
+    });
+
     // Extract assignments from Canvas
     const response = await chrome.tabs.sendMessage(activeTab.id, {
       type: 'EXTRACT_ASSIGNMENTS',
@@ -140,7 +145,41 @@ export async function handleAssignmentSync(assignments, activeCourseIds = []) {
     const assignmentCache = getAssignmentCache();
     const syncer = new AssignmentSyncer(notionAPI, credentials.notionDatabaseId, assignmentCache);
 
-    const results = await syncer.syncAssignments(assignments, activeCourseIds);
+    // Throttled progress writer (max once per 500ms, final write always fires)
+    let lastProgressWrite = 0;
+    let pendingProgress = null;
+    let progressTimer = null;
+    const writeProgress = (state) => {
+      const now = Date.now();
+      const doWrite = () => {
+        chrome.storage.local.set({ sync_progress: { active: true, ...state, startedAt: syncStart } });
+        lastProgressWrite = Date.now();
+        pendingProgress = null;
+      };
+
+      if (state.phase === 'complete' || state.phase === 'error') {
+        if (progressTimer) clearTimeout(progressTimer);
+        doWrite();
+        return;
+      }
+
+      if (now - lastProgressWrite >= 500) {
+        if (progressTimer) clearTimeout(progressTimer);
+        doWrite();
+      } else {
+        pendingProgress = state;
+        if (!progressTimer) {
+          progressTimer = setTimeout(() => {
+            progressTimer = null;
+            if (pendingProgress) doWrite();
+          }, 500 - (now - lastProgressWrite));
+        }
+      }
+    };
+
+    const onProgress = (state) => writeProgress(state);
+
+    const results = await syncer.syncAssignments(assignments, activeCourseIds, { onProgress });
 
     // Update last sync time
     await chrome.storage.local.set({ lastSync: Date.now() });
@@ -151,6 +190,22 @@ export async function handleAssignmentSync(assignments, activeCourseIds = []) {
     SyncLogger.info(`Sync completed in ${durationSec}s`, { durationMs: Date.now() - syncStart });
     await SyncLogger.flush();
 
+    // Write final progress state
+    await chrome.storage.local.set({
+      sync_progress: { active: false, phase: 'complete', current: assignments.length, total: assignments.length, errorCount: results.errors.length, errors: results.errors.slice(0, 20), startedAt: syncStart }
+    });
+
+    // Write error stats
+    const prevStats = (await chrome.storage.local.get('sync_error_stats')).sync_error_stats || {};
+    await chrome.storage.local.set({
+      sync_error_stats: {
+        lastSyncErrorCount: results.errors.length,
+        cumulativeErrorCount: results.errors.length > 0 ? (prevStats.cumulativeErrorCount || 0) + results.errors.length : 0,
+        lastSuccessfulSync: results.errors.length === 0 ? Date.now() : (prevStats.lastSuccessfulSync || null),
+        lastSyncErrors: results.errors.slice(0, 20)
+      }
+    });
+
     // Show notification with detailed stats
     const message = `Created: ${results.created.length}, Updated: ${results.updated.length}, Skipped: ${results.skipped.length}`;
 
@@ -159,6 +214,22 @@ export async function handleAssignmentSync(assignments, activeCourseIds = []) {
     return results;
   } catch (error) {
     Debug.error('Sync failed:', error.message);
+
+    // Write error progress state
+    await chrome.storage.local.set({
+      sync_progress: { active: false, phase: 'error', current: 0, total: 0, errorCount: 1, errors: [{ error: error.message }], startedAt: syncStart }
+    });
+
+    const prevStats = (await chrome.storage.local.get('sync_error_stats')).sync_error_stats || {};
+    await chrome.storage.local.set({
+      sync_error_stats: {
+        lastSyncErrorCount: 1,
+        cumulativeErrorCount: (prevStats.cumulativeErrorCount || 0) + 1,
+        lastSuccessfulSync: prevStats.lastSuccessfulSync || null,
+        lastSyncErrors: [{ error: error.message }]
+      }
+    });
+
     const friendly = getUserFriendlyNotionError(error);
     showNotification(friendly.title, `${friendly.message} ${friendly.action}`);
     throw error;

@@ -232,7 +232,8 @@ export class AssignmentSyncer {
    * @param {Array<string>} activeCourseIds - Currently active Canvas course IDs
    * @returns {Object} Sync results with statistics
    */
-  async syncAssignments(assignments, activeCourseIds = []) {
+  async syncAssignments(assignments, activeCourseIds = [], { onProgress } = {}) {
+    const reportProgress = typeof onProgress === 'function' ? onProgress : () => {};
     // Initialize once before syncing
     if (!this.dataSourceId) {
       await this.initialize();
@@ -256,6 +257,7 @@ export class AssignmentSyncer {
     const currentCanvasIdSet = new Set(canvasIds);
 
     // Step 0: Reconcile cache with Notion reality
+    reportProgress({ phase: 'reconciling', current: 0, total: assignments.length, errorCount: 0 });
     this._notionTruthMap = null;
     if (this.assignmentCache) {
       try {
@@ -294,7 +296,10 @@ export class AssignmentSyncer {
       errors: []
     };
 
+    let syncIndex = 0;
     for (const [canvasId, assignment] of canvasAssignmentMap.entries()) {
+      syncIndex++;
+      reportProgress({ phase: 'syncing', current: syncIndex, total: canvasAssignmentMap.size, currentTitle: assignment.title, errorCount: results.errors.length });
       try {
         // Check cache and compare fields
         const comparison = this.assignmentCache
@@ -428,6 +433,7 @@ export class AssignmentSyncer {
     }
 
     // Step 4: Handle deleted assignments
+    reportProgress({ phase: 'cleanup', current: canvasAssignmentMap.size, total: canvasAssignmentMap.size, errorCount: results.errors.length });
     if (this.assignmentCache && activeCourseIds.length > 0) {
       Debug.log('Checking for deleted assignments...');
       const cleanup = await this.assignmentCache.cleanupInactiveCourses(canvasIds);
@@ -471,6 +477,8 @@ export class AssignmentSyncer {
       `Sync complete: ${results.created.length} created, ${results.updated.length} updated, ${results.deleted.length} deleted, ${results.errors.length} errors`
     );
     await SyncLogger.flush();
+
+    reportProgress({ phase: 'complete', current: canvasAssignmentMap.size, total: canvasAssignmentMap.size, errorCount: results.errors.length, errors: results.errors });
 
     return results;
   }

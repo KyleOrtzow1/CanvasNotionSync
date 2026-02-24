@@ -273,6 +273,78 @@ describe('Integration — 429 retry succeeds', () => {
   });
 });
 
+describe('Integration — onProgress callback', () => {
+  test('calls onProgress with correct phases during sync', async () => {
+    const { fetchMock } = makeStatefulFetch();
+    globalThis.fetch = fetchMock;
+    const api = new NotionAPI('test-token');
+    const cache = new AssignmentCacheManager();
+    const syncer = new AssignmentSyncer(api, DB_ID, cache);
+
+    const progressCalls = [];
+    const onProgress = (state) => progressCalls.push({ ...state });
+
+    await syncer.syncAssignments(
+      [makeAssignment(70, 'Progress Test')],
+      [COURSE_A],
+      { onProgress }
+    );
+
+    const phases = progressCalls.map(p => p.phase);
+    expect(phases).toContain('reconciling');
+    expect(phases).toContain('syncing');
+    expect(phases).toContain('cleanup');
+    expect(phases).toContain('complete');
+
+    // Verify syncing phase has current/total
+    const syncingCall = progressCalls.find(p => p.phase === 'syncing');
+    expect(syncingCall.current).toBe(1);
+    expect(syncingCall.total).toBe(1);
+    expect(syncingCall.currentTitle).toBe('Progress Test');
+
+    // Complete phase should have errorCount
+    const completeCall = progressCalls.find(p => p.phase === 'complete');
+    expect(completeCall.errorCount).toBe(0);
+    expect(completeCall.errors).toEqual([]);
+  });
+
+  test('reports error count in progress when sync has errors', async () => {
+    // Create a fetch mock that fails on page creation
+    globalThis.fetch = jest.fn(async (url, opts) => {
+      const ok = (body) => ({ ok: true, status: 200, headers: { get: () => null },
+        json: async () => body, text: async () => '' });
+
+      if (url.match(/\/databases\//)) return ok({ id: DB_ID, data_sources: [{ id: DS_ID }] });
+      if (url.match(/\/data_sources\//)) return ok({ results: [], has_more: false });
+
+      if (url.endsWith('/pages') && opts?.method === 'POST') {
+        return { ok: false, status: 500, headers: { get: () => null },
+          json: async () => ({ message: 'server error' }),
+          text: async () => '{"message":"server error"}' };
+      }
+      return ok({});
+    });
+
+    const api = new NotionAPI('test-token');
+    const cache = new AssignmentCacheManager();
+    const syncer = new AssignmentSyncer(api, DB_ID, cache);
+
+    const progressCalls = [];
+    const onProgress = (state) => progressCalls.push({ ...state });
+
+    const results = await syncer.syncAssignments(
+      [makeAssignment(71, 'Error Test')],
+      [COURSE_A],
+      { onProgress }
+    );
+
+    expect(results.errors.length).toBeGreaterThan(0);
+
+    const completeCall = progressCalls.find(p => p.phase === 'complete');
+    expect(completeCall.errorCount).toBeGreaterThan(0);
+  });
+});
+
 describe('Integration — concurrent sync calls', () => {
   test('two concurrent syncAssignments calls do not throw', async () => {
     const { fetchMock: fm1 } = makeStatefulFetch();
