@@ -173,4 +173,21 @@ describe('cleanupOldCache', () => {
     const result = await cleanupOldCache(mockCache);
     expect(result.entriesRemoved).toBe(50);
   });
+
+  test('force mode has no eviction cap', async () => {
+    chrome.storage.local.getBytesInUse.mockResolvedValue(524288);
+
+    for (let i = 0; i < 120; i++) {
+      mockCache.cache.set(`key${i}`, { value: i });
+    }
+
+    mockCache.evictLRU.mockImplementation(async () => {
+      const firstKey = mockCache.cache.keys().next().value;
+      mockCache.cache.delete(firstKey);
+    });
+
+    const result = await cleanupOldCache(mockCache, { force: true });
+    expect(result.entriesRemoved).toBe(120);
+    expect(mockCache.cache.size).toBe(0);
+  });
 });

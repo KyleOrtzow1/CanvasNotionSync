@@ -68,7 +68,8 @@ export async function cleanupOldCache(assignmentCache, { force = false } = {}) {
     return currentPercent > THRESHOLDS.CLEANUP_TARGET && assignmentCache.cache.size > 0;
   };
 
-  while (shouldEvict() && evictions < 50) {
+  const maxEvictions = force ? Infinity : 50;
+  while (shouldEvict() && evictions < maxEvictions) {
     await assignmentCache.evictLRU();
     evictions++;
     entriesRemoved++;
