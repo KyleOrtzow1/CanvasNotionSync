@@ -29,7 +29,7 @@ const HEX_ENTITY_REGEX = /&#x([0-9a-fA-F]+);/g;
  * @returns {string} Decoded text
  */
 function decodeHTMLEntities(text) {
-  let decoded = text.replace(HTML_ENTITY_REGEX, (match) => HTML_ENTITY_MAP[match] || match);
+  let decoded = text.replace(HTML_ENTITY_REGEX, (match) => HTML_ENTITY_MAP[match] || match); // eslint-disable-line security/detect-object-injection -- match from regex callback
   decoded = decoded.replace(NUMERIC_ENTITY_REGEX, (_, code) => String.fromCharCode(parseInt(code, 10)));
   decoded = decoded.replace(HEX_ENTITY_REGEX, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
   return decoded;

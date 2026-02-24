@@ -242,7 +242,7 @@ class CanvasAPIExtractor {
       const url = new URL(this.baseURL + endpoint);
 
       Object.keys(params).forEach(key => {
-        url.searchParams.append(key, params[key]);
+        url.searchParams.append(key, params[key]); // eslint-disable-line security/detect-object-injection -- key from Object.keys()
       });
 
       return await this._fetchWithHeaders(url.toString());

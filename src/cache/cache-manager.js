@@ -127,7 +127,7 @@ export class CacheManager {
    * @param {string} pattern - Pattern to match (e.g., "canvas:course:*")
    */
   async invalidate(pattern) {
-    const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+    const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$'); // eslint-disable-line security/detect-non-literal-regexp -- pattern from internal callers only
     let deletedCount = 0;
 
     for (const key of this.cache.keys()) {
@@ -192,7 +192,7 @@ export class CacheManager {
       for (const [key, entry] of this.cache.entries()) {
         // Only persist non-expired entries
         if (Date.now() < entry.expiresAt) {
-          serialized[key] = entry;
+          serialized[key] = entry; // eslint-disable-line security/detect-object-injection -- key from internal Map iterator
         }
       }
 

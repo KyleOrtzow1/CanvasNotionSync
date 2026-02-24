@@ -100,8 +100,8 @@ export class AssignmentCacheManager extends CacheManager {
 
     const changedFields = [];
     for (const field of compareFields) {
-      const cachedValue = cached.canvasData[field];
-      const newValue = newCanvasData[field];
+      const cachedValue = cached.canvasData[field]; // eslint-disable-line security/detect-object-injection -- field from hardcoded whitelist
+      const newValue = newCanvasData[field]; // eslint-disable-line security/detect-object-injection -- field from hardcoded whitelist
 
       // Handle null/undefined equality and string comparison
       if (cachedValue !== newValue) {
@@ -249,7 +249,7 @@ export class AssignmentCacheManager extends CacheManager {
     for (const [key, entry] of this.cache.entries()) {
       // Check if not expired
       if (Date.now() < entry.expiresAt) {
-        allEntries[key] = entry.value;
+        allEntries[key] = entry.value; // eslint-disable-line security/detect-object-injection -- key from internal Map iterator
       }
     }
     return allEntries;

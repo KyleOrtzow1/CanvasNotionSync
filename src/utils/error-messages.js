@@ -78,7 +78,7 @@ const notionErrorMap = {
 
 function getUserFriendlyCanvasError(error) {
   const status = error.status || error.statusCode || 0;
-  const mapped = canvasErrorMap[status];
+  const mapped = canvasErrorMap[status]; // eslint-disable-line security/detect-object-injection -- numeric HTTP status code
 
   if (mapped) {
     // Special case: 403 with rate limit indication
@@ -102,7 +102,7 @@ function getUserFriendlyCanvasError(error) {
 
 function getUserFriendlyNotionError(error) {
   const status = error.status || error.statusCode || 0;
-  const mapped = notionErrorMap[status];
+  const mapped = notionErrorMap[status]; // eslint-disable-line security/detect-object-injection -- numeric HTTP status code
 
   if (mapped) {
     return { ...mapped };
