@@ -47,3 +47,19 @@ jobs:
         with:
           name: coverage-report
           path: coverage/
+
+  test-rate-limiter:
+    name: Rate Limiter Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Run Notion rate limiter integration tests
+        run: npm run test:integration-rate

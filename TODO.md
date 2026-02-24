@@ -385,10 +385,10 @@
   - [x] Remove entirely from `notion-api.js` constructor and all methods
   - [x] Remove `bypassRateLimit: true` from `background-handlers.js`
   - [x] All API methods now always use rate limiter + executeWithRetry
-- [ ] Test with adjusted limits
-  - [ ] Verify 3 req/sec average is enforced
-  - [ ] Verify burst handling still works
-  - [ ] Test with large sync operations
+- [x] Test with adjusted limits
+  - [x] Verify 3 req/sec average is enforced
+  - [x] Verify burst handling still works
+  - [x] Test with large sync operations
 - [x] Update comments in code
 
 ---
