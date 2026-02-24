@@ -304,25 +304,24 @@
 **Priority:** HIGH | **Estimated Time:** 3 hours
 **Reference:** BEST_PRACTICES.md:1289-1303
 
-- [ ] Create `src/utils/storage-monitor.js`
-- [ ] Implement `checkStorageQuota()` function
-  - [ ] Get bytes in use: `chrome.storage.local.getBytesInUse()`
-  - [ ] Get quota limit: `chrome.storage.local.QUOTA_BYTES` (10MB)
-  - [ ] Calculate percentage used
-  - [ ] Return stats object
-- [ ] Implement `cleanupOldCache()` function
-  - [ ] Remove oldest LRU cache entries
-  - [ ] Remove expired credentials (if any)
-  - [ ] Target: free up 20% of quota
-- [ ] Add monitoring in `background-handlers.js`
-  - [ ] Check quota after each sync operation
-  - [ ] Log warning if >80% used
-  - [ ] Auto-cleanup if >90% used
-- [ ] Add quota display in popup UI
-  - [ ] Show storage usage bar
-  - [ ] Show warning if high usage
-  - [ ] Add manual "Clear Old Cache" button
-- [ ] Add unit tests for storage monitoring
+- [x] Create `src/utils/storage-monitor.js`
+- [x] Implement `checkStorageQuota()` function
+  - [x] Get bytes in use: `chrome.storage.local.getBytesInUse()`
+  - [x] Get quota limit: `chrome.storage.local.QUOTA_BYTES` (10MB)
+  - [x] Calculate percentage used
+  - [x] Return stats object
+- [x] Implement `cleanupOldCache()` function
+  - [x] Remove oldest LRU cache entries
+  - [x] Target: free up 20% of quota
+- [x] Add monitoring in `background-handlers.js`
+  - [x] Check quota after each sync operation
+  - [x] Log warning if >80% used
+  - [x] Auto-cleanup if >90% used
+- [x] Add quota display in popup UI
+  - [x] Show storage usage bar
+  - [x] Show warning if high usage
+  - [x] Add manual "Clear Old Cache" button
+- [x] Add unit tests for storage monitoring
 
 ---
 
@@ -674,18 +673,18 @@
 
 ### Completion by Priority
 - **Critical (7 items):** ☑☑☑☑☑☑☑ (7/7 complete)
-- **High (5 items):** ☑☑☑☐☐ (3/5 complete — #8 debug logging done, #9 error mapping done, #12 rate limiter done)
+- **High (5 items):** ☑☑☑☑☐ (4/5 complete — #8 debug logging done, #9 error mapping done, #10 storage monitoring done, #12 rate limiter done)
 - **Medium (4 items):** ☐☐☐☐ (0/4 complete)
 - **Low (11 items):** ☐☐☐☐☐☐☐☐☐☐☐ (0/11 complete)
 
 ### Overall Progress
 ```
 Critical:    [██████████████████████████████] 100%
-High:        [██████████████████░░░░░░░░░░░░] 60%
+High:        [██████████████████████░░░░░░░░] 80%
 Medium:      [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 Low:         [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 ─────────────────────────────────────────────
-Total:       [████████████░░░░░░░░░░░░░░░░░░] 39%
+Total:       [█████████████░░░░░░░░░░░░░░░░░] 42%
 ```
 
 ---
@@ -699,4 +698,4 @@ Total:       [████████████░░░░░░░░░░
 
 ---
 
-**Last Updated:** 2026-02-22
+**Last Updated:** 2026-02-23

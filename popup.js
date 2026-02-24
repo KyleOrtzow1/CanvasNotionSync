@@ -15,6 +15,10 @@ document.addEventListener('DOMContentLoaded', function() {
   const expandBtn = document.getElementById('expandBtn');
   const settingsSection = document.getElementById('settingsSection');
   const debugModeCheckbox = document.getElementById('debugMode');
+  const storageText = document.getElementById('storageText');
+  const storageBar = document.getElementById('storageBar');
+  const storageWarning = document.getElementById('storageWarning');
+  const cleanupCacheBtn = document.getElementById('cleanupCacheBtn');
 
   // Load existing configuration
   loadConfiguration();
@@ -27,6 +31,7 @@ document.addEventListener('DOMContentLoaded', function() {
   if (expandBtn) expandBtn.addEventListener('click', toggleSettings);
   if (clearDataBtn) clearDataBtn.addEventListener('click', handleClearAllData);
   if (debugModeCheckbox) debugModeCheckbox.addEventListener('change', handleDebugModeToggle);
+  if (cleanupCacheBtn) cleanupCacheBtn.addEventListener('click', handleCleanupCache);
 
   async function loadConfiguration() {
     try {
@@ -60,6 +65,8 @@ document.addEventListener('DOMContentLoaded', function() {
       if (debugModeCheckbox) {
         debugModeCheckbox.checked = debugResult.debugMode === true;
       }
+
+      await loadStorageQuota();
 
     } catch (error) {
       showStatus('Failed to load configuration', 'error');
@@ -300,6 +307,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Update last sync time display
         lastSyncElement.textContent = formatDate(new Date());
+        await loadStorageQuota();
       } else {
         showStatus('❌ Sync failed: ' + syncResult.error, 'error');
       }
@@ -413,6 +421,54 @@ document.addEventListener('DOMContentLoaded', function() {
     loadingSpan.className = 'loading';
     button.textContent = loadingText;
     button.insertBefore(loadingSpan, button.firstChild);
+  }
+
+  async function loadStorageQuota() {
+    try {
+      const response = await chrome.runtime.sendMessage({ action: 'GET_STORAGE_QUOTA' });
+      if (response && response.success) {
+        const q = response.quota;
+        storageText.textContent = `${q.formattedUsed} / ${q.formattedQuota} (${q.percentUsed.toFixed(1)}%)`;
+        storageBar.style.width = `${Math.min(q.percentUsed, 100)}%`;
+
+        if (q.status === 'critical') {
+          storageBar.style.background = '#dc3545';
+          storageWarning.textContent = 'Storage nearly full! Clear old cache to avoid data loss.';
+          storageWarning.classList.remove('hidden');
+        } else if (q.status === 'warning') {
+          storageBar.style.background = '#ffc107';
+          storageWarning.textContent = 'Storage usage is high.';
+          storageWarning.classList.remove('hidden');
+        } else {
+          storageBar.style.background = '#2e7d32';
+          storageWarning.classList.add('hidden');
+        }
+      }
+    } catch (error) {
+      // Non-critical, ignore
+    }
+  }
+
+  async function handleCleanupCache() {
+    try {
+      setButtonLoading(cleanupCacheBtn, 'Cleaning...');
+
+      const response = await chrome.runtime.sendMessage({ action: 'CLEANUP_STORAGE' });
+
+      if (response && response.success) {
+        const r = response.result;
+        const freedKB = (r.freedBytes / 1024).toFixed(1);
+        showStatus(`Cleaned ${r.entriesRemoved} entries, freed ${freedKB} KB`, 'success');
+        await loadStorageQuota();
+      } else {
+        showStatus('Cleanup failed', 'error');
+      }
+    } catch (error) {
+      showStatus('Cleanup failed: ' + error.message, 'error');
+    } finally {
+      cleanupCacheBtn.disabled = false;
+      cleanupCacheBtn.textContent = 'Clear Old Cache';
+    }
   }
 
   // Update sync status when inputs change

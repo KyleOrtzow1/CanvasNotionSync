@@ -1,5 +1,6 @@
 import { CredentialManager } from '../credentials/credential-manager.js';
 import { handleAssignmentSync, handleBackgroundSync, testNotionConnection, getAssignmentCache } from './background-handlers.js';
+import { checkStorageQuota, cleanupOldCache } from '../utils/storage-monitor.js';
 
 // Message handling
 export function setupMessageHandlers() {
@@ -81,6 +82,21 @@ export function setupMessageHandlers() {
         globalThis.Debug.setEnabled(request.enabled);
         sendResponse({ success: true });
         return false;
+
+      case 'GET_STORAGE_QUOTA':
+        (async () => {
+          const quota = await checkStorageQuota();
+          sendResponse({ success: true, quota });
+        })();
+        return true;
+
+      case 'CLEANUP_STORAGE':
+        (async () => {
+          const assignmentCache = getAssignmentCache();
+          const result = await cleanupOldCache(assignmentCache);
+          sendResponse({ success: true, result });
+        })();
+        return true;
     }
   });
 }
