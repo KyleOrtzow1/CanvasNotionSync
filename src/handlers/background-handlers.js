@@ -6,6 +6,8 @@ import '../utils/debug.js';
 const { Debug } = globalThis;
 import '../utils/error-messages.js';
 const { getUserFriendlyNotionError } = globalThis;
+import '../utils/sync-logger.js';
+const { SyncLogger } = globalThis;
 import { checkStorageQuota, cleanupOldCache } from '../utils/storage-monitor.js';
 
 // Cache manager singleton instance
@@ -124,6 +126,7 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
 }
 
 export async function handleAssignmentSync(assignments, activeCourseIds = []) {
+  const syncStart = Date.now();
   try {
     const credentials = await CredentialManager.getCredentials();
 
@@ -143,6 +146,10 @@ export async function handleAssignmentSync(assignments, activeCourseIds = []) {
     await chrome.storage.local.set({ lastSync: Date.now() });
 
     await checkStorageAfterSync();
+
+    const durationSec = ((Date.now() - syncStart) / 1000).toFixed(1);
+    SyncLogger.info(`Sync completed in ${durationSec}s`, { durationMs: Date.now() - syncStart });
+    await SyncLogger.flush();
 
     // Show notification with detailed stats
     const message = `Created: ${results.created.length}, Updated: ${results.updated.length}, Skipped: ${results.skipped.length}`;

@@ -1,6 +1,8 @@
 import { NotionValidator } from '../validators/notion-validator.js';
 import '../utils/debug.js';
 const { Debug } = globalThis;
+import '../utils/sync-logger.js';
+const { SyncLogger } = globalThis;
 
 // Assignment synchronization logic with unified cache system
 export class AssignmentSyncer {
@@ -237,6 +239,7 @@ export class AssignmentSyncer {
     }
 
     Debug.log(`Starting unified cache sync for ${assignments.length} Canvas assignments`);
+    SyncLogger.info(`Sync started for ${assignments.length} assignments`);
 
     // Build Canvas assignment map early so we can pass IDs to reconciliation
     const canvasAssignmentMap = new Map();
@@ -313,6 +316,8 @@ export class AssignmentSyncer {
               await this.assignmentCache.cacheAssignment(canvasId, assignment, existingPageId);
             }
 
+            SyncLogger.info(`Updated "${assignment.title}" (reconciled)`, { canvasId, title: assignment.title, changedFields: ['all (reconciled)'] });
+
             results.updated.push({
               canvasId,
               title: assignment.title,
@@ -326,6 +331,8 @@ export class AssignmentSyncer {
             if (this.assignmentCache) {
               await this.assignmentCache.cacheAssignment(canvasId, assignment, result.id);
             }
+
+            SyncLogger.info(`Created "${assignment.title}" in Notion`, { canvasId, title: assignment.title, notionPageId: result.id });
 
             results.created.push({
               canvasId,
@@ -348,6 +355,8 @@ export class AssignmentSyncer {
             if (this.assignmentCache) {
               await this.assignmentCache.cacheAssignment(canvasId, assignment, notionPageId);
             }
+
+            SyncLogger.info(`Updated "${assignment.title}" (fields: ${comparison.changedFields.join(', ')})`, { canvasId, title: assignment.title, changedFields: comparison.changedFields });
 
             results.updated.push({
               canvasId,
@@ -406,6 +415,7 @@ export class AssignmentSyncer {
 
       } catch (error) {
         Debug.error(`Error syncing assignment ${assignment.title}:`, error.message);
+        SyncLogger.error(`Failed to sync "${assignment.title}": ${error.message}`, { canvasId, title: assignment.title, error: error.message });
         results.errors.push({
           canvasId,
           title: assignment.title,
@@ -431,9 +441,12 @@ export class AssignmentSyncer {
           // Remove from cache
           await this.assignmentCache.removeAssignment(canvasId);
 
+          SyncLogger.info('Deleted assignment from Notion', { canvasId, courseId });
+
           results.deleted.push({ canvasId, courseId, notionPageId });
         } catch (error) {
           Debug.error(`Failed to delete assignment ${canvasId}:`, error.message);
+          SyncLogger.error(`Failed to delete assignment: ${error.message}`, { canvasId, error: error.message });
           results.errors.push({
             canvasId,
             error: `Deletion failed: ${error.message}`
@@ -451,8 +464,13 @@ export class AssignmentSyncer {
       Debug.log(`Cleanup complete: ${cleanup.toDelete.length} deleted, ${cleanup.toRemove.length} archived from cache`);
     }
 
-    // Step 5: Print summary
+    // Step 5: Print summary and flush logs
     this.printSyncSummary(results);
+
+    SyncLogger.info(
+      `Sync complete: ${results.created.length} created, ${results.updated.length} updated, ${results.deleted.length} deleted, ${results.errors.length} errors`
+    );
+    await SyncLogger.flush();
 
     return results;
   }

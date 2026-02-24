@@ -97,6 +97,23 @@ export function setupMessageHandlers() {
           sendResponse({ success: true, result });
         })();
         return true;
+
+      case 'GET_SYNC_LOGS':
+        (async () => {
+          const limit = request.limit || 20;
+          const logs = globalThis.SyncLogger ? globalThis.SyncLogger.getLogs(limit) : [];
+          sendResponse({ success: true, logs });
+        })();
+        return true;
+
+      case 'CLEAR_SYNC_LOGS':
+        (async () => {
+          if (globalThis.SyncLogger) {
+            await globalThis.SyncLogger.clear();
+          }
+          sendResponse({ success: true });
+        })();
+        return true;
     }
   });
 }

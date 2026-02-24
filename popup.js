@@ -19,6 +19,11 @@ document.addEventListener('DOMContentLoaded', function() {
   const storageBar = document.getElementById('storageBar');
   const storageWarning = document.getElementById('storageWarning');
   const cleanupCacheBtn = document.getElementById('cleanupCacheBtn');
+  const logsExpandBtn = document.getElementById('logsExpandBtn');
+  const logsSection = document.getElementById('logsSection');
+  const logContainer = document.getElementById('logContainer');
+  const viewAllLogsBtn = document.getElementById('viewAllLogsBtn');
+  const clearLogsBtn = document.getElementById('clearLogsBtn');
 
   // Load existing configuration
   loadConfiguration();
@@ -32,6 +37,9 @@ document.addEventListener('DOMContentLoaded', function() {
   if (clearDataBtn) clearDataBtn.addEventListener('click', handleClearAllData);
   if (debugModeCheckbox) debugModeCheckbox.addEventListener('change', handleDebugModeToggle);
   if (cleanupCacheBtn) cleanupCacheBtn.addEventListener('click', handleCleanupCache);
+  if (logsExpandBtn) logsExpandBtn.addEventListener('click', toggleLogs);
+  if (viewAllLogsBtn) viewAllLogsBtn.addEventListener('click', () => loadSyncLogs(100));
+  if (clearLogsBtn) clearLogsBtn.addEventListener('click', clearSyncLogs);
 
   async function loadConfiguration() {
     try {
@@ -468,6 +476,83 @@ document.addEventListener('DOMContentLoaded', function() {
     } finally {
       cleanupCacheBtn.disabled = false;
       cleanupCacheBtn.textContent = 'Clear Old Cache';
+    }
+  }
+
+  function toggleLogs() {
+    const isHidden = logsSection.classList.contains('hidden');
+
+    if (isHidden) {
+      logsSection.classList.remove('hidden');
+      logsExpandBtn.textContent = '▲ Hide Logs';
+      loadSyncLogs(20);
+    } else {
+      logsSection.classList.add('hidden');
+      logsExpandBtn.textContent = 'Sync Logs';
+    }
+  }
+
+  async function loadSyncLogs(limit) {
+    try {
+      const response = await chrome.runtime.sendMessage({ action: 'GET_SYNC_LOGS', limit });
+      if (response && response.success) {
+        renderLogs(response.logs);
+      }
+    } catch (error) {
+      // Non-critical
+    }
+  }
+
+  function renderLogs(logs) {
+    if (!logs || logs.length === 0) {
+      logContainer.innerHTML = '<div class="log-empty">No sync logs yet</div>';
+      return;
+    }
+
+    const levelIcons = { info: '✅', warning: '⚠️', error: '❌' };
+
+    logContainer.innerHTML = logs.map(entry => {
+      const icon = levelIcons[entry.level] || '📋';
+      const time = formatLogTime(entry.timestamp);
+      const escapedMessage = escapeHtml(entry.message);
+      return `<div class="log-entry level-${entry.level}">` +
+        `<span class="log-time">${time}</span>` +
+        `<span class="log-icon">${icon}</span>` +
+        `<span class="log-message">${escapedMessage}</span>` +
+        `</div>`;
+    }).join('');
+  }
+
+  function formatLogTime(timestamp) {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffMins < 1440) {
+      return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' }) +
+      ' ' + date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  async function clearSyncLogs() {
+    if (!confirm('Clear all sync logs?')) return;
+
+    try {
+      await chrome.runtime.sendMessage({ action: 'CLEAR_SYNC_LOGS' });
+      renderLogs([]);
+      showStatus('Sync logs cleared', 'success');
+    } catch (error) {
+      showStatus('Failed to clear logs', 'error');
     }
   }
 
