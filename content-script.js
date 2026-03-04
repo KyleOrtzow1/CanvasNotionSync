@@ -20,6 +20,12 @@ class CanvasAPIExtractor {
     this.baseURL = null;
     this.forceRefresh = false;
     this.rateLimiter = new CanvasRateLimiter();
+    this.parallelBatchSize = 3;
+    this.parallelBatchDelayMs = 500;
+    this.extractionProgressIntervalMs = 300;
+    this.lastExtractionProgressWrite = 0;
+    this.pendingExtractionProgress = null;
+    this.pendingExtractionProgressTimer = null;
     this.setupMessageListener();
     this.detectCanvasInstance();
   }
@@ -112,104 +118,28 @@ class CanvasAPIExtractor {
 
 
       // Get assignments from all courses
-      const allAssignments = [];
       const activeCourseIds = courses.map(c => c.id.toString());
+      const totalCourses = courses.length;
+      await this.updateExtractionProgress({ current: 0, total: totalCourses, errorCount: 0 }, true);
 
-      for (const course of courses) {
-        try {
-          // Try to get cached assignments first
-          let assignments = null;
-          if (!this.forceRefresh) {
-            try {
-              const cacheResponse = await chrome.runtime.sendMessage({
-                action: 'GET_CANVAS_CACHE',
-                key: `canvas:course:${course.id}:assignments`
-              });
-              if (cacheResponse?.data) {
-                assignments = cacheResponse.data;
-              }
-            } catch (error) {
-              // Cache unavailable, will fetch fresh
-            }
-          }
-
-          // Fetch fresh if no cache or force refresh
-          if (!assignments) {
-            assignments = await this.makeAPICall(`/courses/${course.id}/assignments`, {
-              'per_page': 100,
-              'order_by': 'due_at',
-              'include': 'submission'
-            }, 50);
-
-            // Cache the assignments
-            try {
-              await chrome.runtime.sendMessage({
-                action: 'SET_CANVAS_CACHE',
-                key: `canvas:course:${course.id}:assignments`,
-                data: assignments,
-                ttl: 5 * 60 * 1000 // 5 minutes
-              });
-            } catch (error) {
-              // Cache storage failed, non-critical
-            }
-          }
-
-
-          // Transform to our format and fetch grades
-          const transformedAssignments = [];
-          for (const assignment of assignments) {
-            // Validate Canvas assignment data
-            const { valid, validated, warnings } = CanvasValidator.validateAssignment(assignment);
-            if (!valid) {
-              continue; // Skip entirely invalid assignments
-            }
-            if (warnings.length > 0) {
-              Debug.warn(`Canvas validation warnings for assignment ${validated.id}:`, warnings);
-            }
-
-            let grade = null;
-            let gradePercent = null;
-            let submissionStatus = 'Not Started';
-
-            // Get submission data if available (included via ?include=submission)
-            if (validated.submission) {
-              const submission = validated.submission;
-              if (submission.grade) {
-                grade = submission.grade;
-              }
-              if (submission.score && validated.points_possible) {
-                gradePercent = Math.round((submission.score / validated.points_possible) * 100);
-              }
-              submissionStatus = this.getSubmissionStatus(submission);
-            }
-
-            transformedAssignments.push({
-              title: validated.name,
-              course: this.extractCourseInfo(course.course_code),
-              courseCode: course.course_code,
-              courseId: course.id.toString(),
-              dueDate: validated.due_at,
-              points: validated.points_possible,
-              canvasId: validated.id.toString(),
-              link: validated.html_url,
-              status: submissionStatus,
-              type: validated.submission_types?.join(', ') || 'Assignment',
-              description: sanitizeHTML(validated.description),
-              grade: grade,
-              gradePercent: gradePercent,
-              source: 'canvas_api'
-            });
-          }
-
-          allAssignments.push(...transformedAssignments);
-        } catch (error) {
-          // Course assignments could not be fetched, continue with next course
+      const { assignments: allAssignments, extractionErrors } = await this.processCoursesBatch(courses, {
+        batchSize: this.parallelBatchSize,
+        batchDelayMs: this.parallelBatchDelayMs,
+        onProgress: async (progress) => {
+          await this.updateExtractionProgress(progress);
         }
-      }
+      });
+
+      await this.updateExtractionProgress({
+        current: totalCourses,
+        total: totalCourses,
+        errorCount: extractionErrors.length
+      }, true);
 
       return {
         assignments: allAssignments,
-        activeCourseIds: activeCourseIds
+        activeCourseIds: activeCourseIds,
+        extractionErrors: extractionErrors
       };
 
     } catch (error) {
@@ -222,6 +152,257 @@ class CanvasAPIExtractor {
       }
       throw error;
     }
+  }
+
+  safeCourseCode(course) {
+    if (typeof course?.course_code === 'string' && course.course_code.trim().length > 0) {
+      return course.course_code.trim();
+    }
+    return `Course ${course?.id ?? 'Unknown'}`;
+  }
+
+  async processCoursesBatch(courses, options = {}) {
+    const batchSize = options.batchSize || this.parallelBatchSize;
+    const batchDelayMs = options.batchDelayMs ?? this.parallelBatchDelayMs;
+    const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+
+    const allAssignments = [];
+    const extractionErrors = [];
+    const total = courses.length;
+    let completed = 0;
+    let errorCount = 0;
+
+    if (onProgress) {
+      try {
+        await onProgress({ current: 0, total: total, errorCount: 0 });
+      } catch (error) {
+        // Progress reporting failures are non-critical
+      }
+    }
+
+    for (let i = 0; i < courses.length; i += batchSize) {
+      const batch = courses.slice(i, i + batchSize);
+      const settled = await Promise.allSettled(batch.map(course => this.processSingleCourse(course)));
+
+      for (let j = 0; j < settled.length; j++) {
+        const settledResult = settled[j]; // eslint-disable-line security/detect-object-injection -- j bounded by settled.length in loop
+        const course = batch[j]; // eslint-disable-line security/detect-object-injection -- j bounded by batch.length in loop
+        const fallbackCourseId = course?.id ? course.id.toString() : 'unknown';
+        const fallbackCourseCode = this.safeCourseCode(course);
+
+        if (settledResult.status === 'fulfilled' && settledResult.value?.ok) {
+          if (Array.isArray(settledResult.value.assignments)) {
+            allAssignments.push(...settledResult.value.assignments);
+          }
+        } else {
+          errorCount++;
+          extractionErrors.push({
+            courseId: settledResult.value?.courseId || fallbackCourseId,
+            courseCode: settledResult.value?.courseCode || fallbackCourseCode,
+            error: settledResult.status === 'rejected'
+              ? (settledResult.reason?.message || String(settledResult.reason))
+              : (settledResult.value?.error || 'Failed to process course assignments')
+          });
+        }
+
+        completed++;
+        if (onProgress) {
+          try {
+            await onProgress({
+              current: completed,
+              total: total,
+              errorCount: errorCount,
+              currentCourse: fallbackCourseCode
+            });
+          } catch (error) {
+            // Progress reporting failures are non-critical
+          }
+        }
+      }
+
+      if (i + batchSize < courses.length) {
+        await this.delay(batchDelayMs);
+      }
+    }
+
+    return { assignments: allAssignments, extractionErrors: extractionErrors };
+  }
+
+  async processSingleCourse(course) {
+    const courseId = course?.id ? course.id.toString() : 'unknown';
+    const courseCode = this.safeCourseCode(course);
+
+    try {
+      // Try to get cached assignments first
+      let assignments = null;
+      if (!this.forceRefresh) {
+        try {
+          const cacheResponse = await chrome.runtime.sendMessage({
+            action: 'GET_CANVAS_CACHE',
+            key: `canvas:course:${course.id}:assignments`
+          });
+          if (cacheResponse?.data) {
+            assignments = cacheResponse.data;
+          }
+        } catch (error) {
+          // Cache unavailable, will fetch fresh
+        }
+      }
+
+      // Fetch fresh if no cache or force refresh
+      if (!assignments) {
+        assignments = await this.makeAPICall(`/courses/${course.id}/assignments`, {
+          'per_page': 100,
+          'order_by': 'due_at',
+          'include': 'submission'
+        }, 50);
+
+        // Cache the assignments
+        try {
+          await chrome.runtime.sendMessage({
+            action: 'SET_CANVAS_CACHE',
+            key: `canvas:course:${course.id}:assignments`,
+            data: assignments,
+            ttl: 5 * 60 * 1000 // 5 minutes
+          });
+        } catch (error) {
+          // Cache storage failed, non-critical
+        }
+      }
+
+      const transformedAssignments = this.transformAssignmentsForCourse(course, assignments);
+      return {
+        ok: true,
+        courseId: courseId,
+        courseCode: courseCode,
+        assignments: transformedAssignments
+      };
+    } catch (error) {
+      Debug.warn(`Failed to fetch Canvas assignments for ${courseCode}:`, error.message || error);
+      return {
+        ok: false,
+        courseId: courseId,
+        courseCode: courseCode,
+        error: error.message || 'Failed to process course assignments'
+      };
+    }
+  }
+
+  transformAssignmentsForCourse(course, assignments) {
+    const transformedAssignments = [];
+    const courseCode = this.safeCourseCode(course);
+    const courseId = course?.id ? course.id.toString() : 'unknown';
+
+    for (const assignment of assignments || []) {
+      // Validate Canvas assignment data
+      const { valid, validated, warnings } = CanvasValidator.validateAssignment(assignment);
+      if (!valid) {
+        continue; // Skip entirely invalid assignments
+      }
+      if (warnings.length > 0) {
+        Debug.warn(`Canvas validation warnings for assignment ${validated.id}:`, warnings);
+      }
+
+      let grade = null;
+      let gradePercent = null;
+      let submissionStatus = 'Not Started';
+
+      // Get submission data if available (included via ?include=submission)
+      if (validated.submission) {
+        const submission = validated.submission;
+        if (submission.grade) {
+          grade = submission.grade;
+        }
+        if (submission.score && validated.points_possible) {
+          gradePercent = Math.round((submission.score / validated.points_possible) * 100);
+        }
+        submissionStatus = this.getSubmissionStatus(submission);
+      }
+
+      transformedAssignments.push({
+        title: validated.name,
+        course: this.extractCourseInfo(courseCode),
+        courseCode: courseCode,
+        courseId: courseId,
+        dueDate: validated.due_at,
+        points: validated.points_possible,
+        canvasId: validated.id.toString(),
+        link: validated.html_url,
+        status: submissionStatus,
+        type: validated.submission_types?.join(', ') || 'Assignment',
+        description: sanitizeHTML(validated.description),
+        grade: grade,
+        gradePercent: gradePercent,
+        source: 'canvas_api'
+      });
+    }
+
+    return transformedAssignments;
+  }
+
+  buildExtractionProgressPayload(state) {
+    const payload = {
+      active: true,
+      phase: 'extracting',
+      current: state.current || 0,
+      total: state.total || 0,
+      errorCount: state.errorCount || 0
+    };
+
+    if (state.currentCourse) {
+      payload.currentTitle = state.currentCourse;
+    }
+
+    return payload;
+  }
+
+  async updateExtractionProgress(state, force = false) {
+    if (!chrome?.storage?.local?.set) {
+      return;
+    }
+
+    const payload = this.buildExtractionProgressPayload(state);
+    const now = Date.now();
+    const elapsed = now - this.lastExtractionProgressWrite;
+    const shouldWriteNow = force || elapsed >= this.extractionProgressIntervalMs;
+
+    if (shouldWriteNow) {
+      if (this.pendingExtractionProgressTimer) {
+        clearTimeout(this.pendingExtractionProgressTimer);
+        this.pendingExtractionProgressTimer = null;
+      }
+      this.pendingExtractionProgress = null;
+      try {
+        await chrome.storage.local.set({ sync_progress: payload });
+        this.lastExtractionProgressWrite = Date.now();
+      } catch (error) {
+        // Progress reporting failures are non-critical
+      }
+      return;
+    }
+
+    this.pendingExtractionProgress = payload;
+    if (!this.pendingExtractionProgressTimer) {
+      const waitMs = this.extractionProgressIntervalMs - elapsed;
+      this.pendingExtractionProgressTimer = setTimeout(() => {
+        this.pendingExtractionProgressTimer = null;
+        const pendingPayload = this.pendingExtractionProgress;
+        this.pendingExtractionProgress = null;
+        if (pendingPayload) {
+          chrome.storage.local.set({ sync_progress: pendingPayload })
+            .then(() => {
+              this.lastExtractionProgressWrite = Date.now();
+            })
+            .catch(() => {
+              // Progress reporting failures are non-critical
+            });
+        }
+      }, Math.max(0, waitMs));
+    }
+  }
+
+  async delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   parseLinkHeader(linkHeader) {
@@ -394,6 +575,10 @@ class CanvasAPIExtractor {
   }
 }
 
+if (typeof globalThis !== 'undefined' && typeof globalThis.CanvasAPIExtractor === 'undefined') {
+  globalThis.CanvasAPIExtractor = CanvasAPIExtractor;
+}
+
 // Initialize the API extractor
 const apiExtractor = new CanvasAPIExtractor();
 
@@ -456,9 +641,14 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (p.active) {
     btn.disabled = true;
     switch (p.phase) {
-      case 'extracting':
-        btn.textContent = 'Extracting...';
+      case 'extracting': {
+        if (p.total > 0) {
+          btn.textContent = `Extracting ${p.current}/${p.total}...`;
+        } else {
+          btn.textContent = 'Extracting...';
+        }
         break;
+      }
       case 'reconciling':
         btn.textContent = 'Reconciling...';
         break;

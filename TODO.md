@@ -400,15 +400,15 @@
 **Reference:** BEST_PRACTICES.md:793-814
 
 #### Parallel Batch Processing
-- [ ] Refactor course processing in `content-script.js:107-202`
-  - [ ] Change from sequential for loop to batched parallel
-  - [ ] Create `processCoursesBatch()` helper function
-  - [ ] Use `Promise.all()` for batch of 3-5 courses
-  - [ ] Add small delay between batches
-  - [ ] Handle partial batch failures gracefully
-- [ ] Add progress reporting for parallel processing
-  - [ ] Track completed courses
-  - [ ] Update user with progress
+- [x] Refactor course processing in `content-script.js:107-202`
+  - [x] Change from sequential for loop to batched parallel
+  - [x] Create `processCoursesBatch()` helper function
+  - [x] Use `Promise.all()` for batch of 3-5 courses
+  - [x] Add small delay between batches
+  - [x] Handle partial batch failures gracefully
+- [x] Add progress reporting for parallel processing
+  - [x] Track completed courses
+  - [x] Update user with progress
 
 #### Use Batch Submission Endpoint
 - [ ] Research Canvas batch submissions endpoint

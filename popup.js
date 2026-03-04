@@ -558,8 +558,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
       switch (p.phase) {
         case 'extracting':
-          percent = 15;
-          text = 'Extracting assignments...';
+          if (p.total > 0) {
+            percent = 15 + Math.round((Math.min(p.current, p.total) / p.total) * 10);
+            text = `Extracting courses ${p.current}/${p.total}...`;
+          } else {
+            percent = 15;
+            text = 'Extracting assignments...';
+          }
           break;
         case 'reconciling':
           percent = 25;
