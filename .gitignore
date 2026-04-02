@@ -1,3 +1,6 @@
+# Build output
+canvas-notion-sync-v*.zip
+
 # Node.js dependencies
 node_modules/
 npm-debug.log*

@@ -1,0 +1,45 @@
+<svg width="440" height="280" viewBox="0 0 440 280" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1b5e20"/>
+      <stop offset="100%" stop-color="#2e7d32"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="440" height="280" fill="url(#bg)"/>
+
+  <!-- Canvas icon (left) -->
+  <g transform="translate(100, 100)">
+    <rect width="56" height="56" rx="12" fill="rgba(255,255,255,0.15)"/>
+    <text x="28" y="22" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600" fill="white" text-anchor="middle">Canvas</text>
+    <path d="M14 30h28v3H14z" fill="rgba(255,255,255,0.6)"/>
+    <path d="M14 37h28v3H14z" fill="rgba(255,255,255,0.6)"/>
+    <path d="M14 44h20v3H14z" fill="rgba(255,255,255,0.6)"/>
+  </g>
+
+  <!-- Arrow -->
+  <g transform="translate(190, 118)">
+    <path d="M0 10h36" stroke="white" stroke-width="2.5" stroke-dasharray="4 3" opacity="0.7"/>
+    <path d="M60 10h36" stroke="white" stroke-width="2.5" stroke-dasharray="4 3" opacity="0.7"/>
+    <!-- Sync circle -->
+    <circle cx="48" cy="10" r="14" fill="#4caf50"/>
+    <path d="M42 10l4 4 8-8" stroke="white" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Notion icon (right) -->
+  <g transform="translate(284, 100)">
+    <rect width="56" height="56" rx="12" fill="rgba(255,255,255,0.15)"/>
+    <text x="28" y="22" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600" fill="white" text-anchor="middle">Notion</text>
+    <rect x="14" y="30" width="28" height="17" rx="2" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="1.5"/>
+    <path d="M14 36h28" stroke="rgba(255,255,255,0.4)" stroke-width="1"/>
+    <path d="M14 42h28" stroke="rgba(255,255,255,0.4)" stroke-width="1"/>
+    <path d="M24 30v17" stroke="rgba(255,255,255,0.4)" stroke-width="1"/>
+  </g>
+
+  <!-- Title -->
+  <text x="220" y="210" font-family="Segoe UI, sans-serif" font-size="22" font-weight="700" fill="white" text-anchor="middle">Canvas-Notion Sync</text>
+
+  <!-- Subtitle -->
+  <text x="220" y="238" font-family="Segoe UI, sans-serif" font-size="13" fill="rgba(255,255,255,0.75)" text-anchor="middle">Automatically sync your assignments to Notion</text>
+</svg>
