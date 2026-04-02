@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy - Canvas-Notion Assignment Sync</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      color: #333;
+      line-height: 1.7;
+    }
+    h1 { color: #2e7d32; margin-bottom: 4px; }
+    h2 { color: #444; margin-top: 32px; }
+    .updated { color: #666; font-size: 14px; margin-bottom: 32px; }
+    ul { padding-left: 24px; }
+    li { margin-bottom: 6px; }
+    a { color: #2e7d32; }
+  </style>
+</head>
+<body>
+
+<h1>Privacy Policy</h1>
+<p class="updated">Canvas-Notion Assignment Sync &mdash; Last updated: April 1, 2026</p>
+
+<h2>Overview</h2>
+<p>Canvas-Notion Assignment Sync ("the Extension") is a Chrome extension that synchronizes assignment data from Canvas LMS to a Notion database. This policy describes what data the Extension accesses, how it is stored, and who it is shared with.</p>
+
+<h2>Data We Collect</h2>
+<p>The Extension collects and stores the following data, all provided directly by the user or retrieved from APIs the user has authorized:</p>
+<ul>
+  <li><strong>Canvas API token</strong> &mdash; used to authenticate requests to your Canvas LMS instance</li>
+  <li><strong>Notion integration token</strong> &mdash; used to authenticate requests to the Notion API</li>
+  <li><strong>Notion database ID</strong> &mdash; identifies which Notion database to sync assignments to</li>
+  <li><strong>Assignment data</strong> &mdash; titles, due dates, point values, submission statuses, grades, course names, and assignment descriptions retrieved from the Canvas API</li>
+  <li><strong>Notion page IDs</strong> &mdash; identifiers for synced pages, used to update existing entries instead of creating duplicates</li>
+</ul>
+<p>The Extension does not collect any personal information beyond what is listed above. It does not track browsing history, keystrokes, or any activity outside of Canvas LMS pages.</p>
+
+<h2>How Data Is Stored</h2>
+<ul>
+  <li>All API tokens are encrypted using <strong>AES-GCM 256-bit encryption</strong> with a unique 96-bit initialization vector before being saved to <code>chrome.storage.local</code>.</li>
+  <li>Assignment data is cached locally in <code>chrome.storage.local</code> with a <strong>30-day time-to-live</strong>. Expired entries are automatically removed.</li>
+  <li>All data is stored entirely on your device. No data is sent to any server operated by the Extension developer.</li>
+</ul>
+
+<h2>Third-Party Services</h2>
+<p>The Extension communicates with two external services, both at the explicit direction of the user:</p>
+<ul>
+  <li><strong>Canvas LMS API</strong> (<code>*.instructure.com</code>) &mdash; to retrieve course and assignment data using your Canvas API token</li>
+  <li><strong>Notion API</strong> (<code>api.notion.com</code>) &mdash; to create, update, and query pages in your Notion database using your Notion integration token</li>
+</ul>
+<p>The Extension does not send data to any other third-party service, analytics provider, or advertising network.</p>
+
+<h2>Data Retention and Deletion</h2>
+<ul>
+  <li>Cached assignment data expires automatically after 30 days.</li>
+  <li>You can delete all stored data at any time by clicking <strong>"Clear All Data"</strong> in the Extension's settings panel.</li>
+  <li>Uninstalling the Extension removes all locally stored data.</li>
+</ul>
+
+<h2>Permissions</h2>
+<p>The Extension requests the following Chrome permissions:</p>
+<ul>
+  <li><strong>storage</strong> &mdash; to persist encrypted credentials and cached data</li>
+  <li><strong>activeTab</strong> &mdash; to interact with Canvas LMS pages</li>
+  <li><strong>scripting</strong> &mdash; to inject the content script into Canvas pages</li>
+  <li><strong>alarms</strong> &mdash; to run periodic background syncs (every 30 minutes)</li>
+  <li><strong>notifications</strong> &mdash; to display sync status notifications</li>
+  <li><strong>Host access to <code>*.instructure.com</code> and <code>api.notion.com</code></strong> &mdash; to communicate with the Canvas and Notion APIs</li>
+</ul>
+
+<h2>Children's Privacy</h2>
+<p>The Extension is not directed at children under the age of 13 and does not knowingly collect personal information from children.</p>
+
+<h2>Changes to This Policy</h2>
+<p>If this privacy policy is updated, the revised version will be posted at this URL with an updated date. Continued use of the Extension after changes constitutes acceptance of the revised policy.</p>
+
+<h2>Contact</h2>
+<p>If you have questions about this privacy policy, please open an issue on the <a href="https://github.com/KyleOrtzow1/CanvasNotionSync/issues">GitHub repository</a>.</p>
+
+</body>
+</html>

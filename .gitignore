@@ -58,7 +58,9 @@ test-*.html
 
 # Generated documentation (already removed but adding for future)
 NEXT_STEPS.md
-docs/
+
+# GitHub Pages (privacy policy etc.) is in docs/ — don't ignore it
+!docs/
 
 # Icon generation files (already removed but adding for future)
 generate-icons.js
