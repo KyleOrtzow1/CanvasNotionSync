@@ -220,14 +220,13 @@ document.addEventListener('DOMContentLoaded', function() {
         token: canvasToken
       });
 
-      // Test extraction
+      // Test connectivity with a single lightweight request, not a full extraction
       const response = await chrome.tabs.sendMessage(activeTab.id, {
-        type: 'EXTRACT_ASSIGNMENTS'
+        type: 'TEST_CANVAS_CONNECTION'
       });
 
       if (response.success) {
-        const assignmentCount = response.assignments.length;
-        showStatus(`✅ Canvas API working! Found ${assignmentCount} assignments`, 'success');
+        showStatus(`✅ Connected to Canvas as ${response.name}`, 'success');
       } else {
         showStatus('❌ Canvas API test failed: ' + response.error, 'error');
       }

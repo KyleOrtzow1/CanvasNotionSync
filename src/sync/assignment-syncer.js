@@ -4,6 +4,47 @@ const { Debug } = globalThis;
 import '../utils/sync-logger.js';
 const { SyncLogger } = globalThis;
 
+// Ordering used to decide whether a manual Notion status edit represents
+// forward progress (preserve it) or a backward regression (Canvas wins).
+// Canvas's own vocabulary (see content-script.js getSubmissionStatus) is
+// Not Started / Submitted / Pending Review / Late / Graded — "In Progress"
+// never comes from Canvas, it only ever exists as a manual Notion value.
+export const STATUS_RANK = {
+  'Not Started': 0,
+  'Late': 0,           // a deadline state, not progress — same rank as Not Started
+  'In Progress': 1,    // manual-only; Canvas never emits it
+  'Submitted': 2,
+  'Pending Review': 2, // submitted, awaiting a grader
+  'Graded': 3
+};
+
+/**
+ * Decide which status should end up in Notion given the status currently
+ * on the Notion page (existingStatus) and the status Canvas just reported
+ * (newStatus). Forward progress the user made manually (existing ranks
+ * higher than Canvas's report) is preserved; otherwise Canvas's value wins,
+ * including when the two are tied in rank but differ (e.g. Late vs Not
+ * Started). An unknown/missing status on either side is never compared
+ * against a rank — it falls through to writing Canvas's value rather than
+ * silently no-op'ing on an `undefined` comparison.
+ * @param {string|null|undefined} existingStatus - status currently on the Notion page
+ * @param {string|null|undefined} newStatus - status Canvas just reported
+ * @returns {string|null|undefined} the status that should be written
+ */
+export function resolvePreservedStatus(existingStatus, newStatus) {
+  const existingRank = Object.prototype.hasOwnProperty.call(STATUS_RANK, existingStatus)
+    ? STATUS_RANK[existingStatus] // eslint-disable-line security/detect-object-injection -- key presence just verified via hasOwnProperty
+    : undefined;
+  const newRank = Object.prototype.hasOwnProperty.call(STATUS_RANK, newStatus)
+    ? STATUS_RANK[newStatus] // eslint-disable-line security/detect-object-injection -- key presence just verified via hasOwnProperty
+    : undefined;
+
+  if (existingRank !== undefined && newRank !== undefined && existingRank > newRank) {
+    return existingStatus;
+  }
+  return newStatus;
+}
+
 // Assignment synchronization logic with unified cache system
 export class AssignmentSyncer {
   constructor(notionAPI, databaseId, assignmentCache = null) {
@@ -73,8 +114,16 @@ export class AssignmentSyncer {
 
   /**
    * Fetch all non-archived pages from the Notion data source and build
-   * a canvasId -> notionPageId ground-truth mapping. Handles pagination.
-   * @returns {Map<string, string>} Map of canvasId to notionPageId
+   * a canvasId -> ground-truth mapping. Handles pagination.
+   *
+   * Also captures each page's live Status (a `select` property, always
+   * returned complete in query results — unlike `rich_text`, which can be
+   * truncated) so callers can detect a manual Notion status edit without
+   * an extra read per assignment. This is a snapshot taken once here, at
+   * the start of the sync; a Notion edit made later in the same sync run
+   * won't be reflected until the next sync (see #34's 30-minute auto-sync)
+   * — that's expected, not a bug.
+   * @returns {Map<string, {pageId: string, status: string|null}>} Map of canvasId to page info
    */
   async fetchAllNotionPages() {
     const truthMap = new Map();
@@ -93,7 +142,10 @@ export class AssignmentSyncer {
 
         const canvasId = this.extractCanvasIdFromProperty(page.properties?.['Canvas ID']);
         if (canvasId && !truthMap.has(canvasId)) {
-          truthMap.set(canvasId, page.id);
+          truthMap.set(canvasId, {
+            pageId: page.id,
+            status: page.properties?.Status?.select?.name ?? null
+          });
         }
       }
 
@@ -114,7 +166,7 @@ export class AssignmentSyncer {
    * Only populates cache for assignments in the current Canvas sync set to avoid
    * repeatedly adding and removing entries for inactive courses.
    * When a notionPageId is corrected, wipes canvasData to force a full update.
-   * @param {Map<string, string>} truthMap - canvasId -> notionPageId from Notion
+   * @param {Map<string, {pageId: string, status: string|null}>} truthMap - canvasId -> page info from Notion
    * @param {Set<string>} [currentCanvasIds] - Canvas IDs in the current sync batch
    * @returns {Object} { fixed, populated, orphaned }
    */
@@ -122,7 +174,7 @@ export class AssignmentSyncer {
     const stats = { fixed: 0, populated: 0, orphaned: 0 };
 
     // Pass 1: Ensure cache entries match Notion truth
-    for (const [canvasId, notionPageId] of truthMap.entries()) {
+    for (const [canvasId, { pageId: notionPageId }] of truthMap.entries()) {
       const cached = await this.assignmentCache.getCachedAssignment(canvasId);
 
       if (!cached) {
@@ -142,7 +194,7 @@ export class AssignmentSyncer {
 
     // Pass 2: Remove cache entries whose notionPageId no longer exists in Notion
     const allCached = await this.assignmentCache.getAllAssignments();
-    const truthPageIds = new Set(truthMap.values());
+    const truthPageIds = new Set([...truthMap.values()].map(v => v.pageId));
 
     for (const entry of allCached) {
       if (entry.notionPageId && !truthPageIds.has(entry.notionPageId)) {
@@ -310,11 +362,15 @@ export class AssignmentSyncer {
 
         if (!comparison.cachedEntry) {
           // Check truth map before creating — avoid duplicates
-          const existingPageId = this._notionTruthMap?.get(canvasId);
+          const existingPageId = this._notionTruthMap?.get(canvasId)?.pageId;
 
           if (existingPageId) {
             // Page exists in Notion but wasn't in cache — update instead of create
             Debug.log(`Found existing Notion page for "${assignment.title}", updating instead of creating`);
+
+            // Preserve manual status changes
+            await this.applyStatusPreservation(properties, existingPageId, assignment.status);
+
             await this.notionAPI.updatePage(existingPageId, properties);
 
             if (this.assignmentCache) {
@@ -379,6 +435,10 @@ export class AssignmentSyncer {
               if (existingPage) {
                 // Found a live page — update it and fix the cache
                 Debug.log(`Found existing live page for "${assignment.title}", updating`);
+
+                // Preserve manual status changes
+                await this.applyStatusPreservation(properties, existingPage.id, assignment.status);
+
                 await this.notionAPI.updatePage(existingPage.id, properties);
 
                 if (this.assignmentCache) {
@@ -411,11 +471,50 @@ export class AssignmentSyncer {
           }
 
         } else {
-          // No changes - skip API call
-          results.skipped.push({
-            canvasId,
-            title: assignment.title
-          });
+          // No tracked Canvas fields changed. Still check whether Notion's
+          // status has fallen behind what Canvas reports — e.g. a manual
+          // edit back to an earlier status — using the truth map fetched
+          // once at Step 0. This is a point-in-time snapshot: an edit made
+          // later in this same sync run won't be seen until the next sync
+          // (see #34's 30-minute auto-sync), which is expected.
+          const truthEntry = this._notionTruthMap?.get(canvasId);
+          const notionPageId = comparison.cachedEntry.notionPageId;
+          let statusCorrected = false;
+
+          if (truthEntry && notionPageId && assignment.status) {
+            const preserved = resolvePreservedStatus(truthEntry.status, assignment.status);
+
+            if (preserved !== truthEntry.status) {
+              try {
+                await this.notionAPI.updatePage(notionPageId, {
+                  Status: { select: { name: preserved } }
+                });
+
+                SyncLogger.info(
+                  `Corrected regressed status for "${assignment.title}" (Notion: ${truthEntry.status} -> ${preserved})`,
+                  { canvasId, title: assignment.title, changedFields: ['status'] }
+                );
+
+                results.updated.push({
+                  canvasId,
+                  title: assignment.title,
+                  changedFields: ['status (corrected)'],
+                  notionPageId
+                });
+                statusCorrected = true;
+              } catch (error) {
+                Debug.warn(`Could not correct regressed status for "${assignment.title}":`, error.message);
+              }
+            }
+          }
+
+          if (!statusCorrected) {
+            // No changes - skip API call
+            results.skipped.push({
+              canvasId,
+              title: assignment.title
+            });
+          }
         }
 
       } catch (error) {
@@ -484,8 +583,12 @@ export class AssignmentSyncer {
   }
 
   /**
-   * Preserve manual "In Progress" and "Submitted" status changes
-   * Only allow automatic status updates that progress forward in the workflow
+   * Preserve manual forward-progress status changes made in Notion.
+   * Fetches the page's current status and, using the STATUS_RANK table,
+   * only lets Canvas's new status through when it is not a regression
+   * behind what's already on the page. Mutates `properties.Status` in
+   * place when the existing status should be kept; leaves it untouched
+   * (Canvas's value from formatAssignmentProperties) otherwise.
    */
   async applyStatusPreservation(properties, notionPageId, newStatus) {
     try {
@@ -493,16 +596,11 @@ export class AssignmentSyncer {
       const currentPage = await this.notionAPI.getPage(notionPageId);
       const existingStatus = currentPage.properties?.Status?.select?.name;
 
-      // If existing status is "In Progress", only update if new status is "Submitted" or "Graded"
-      if (existingStatus === 'In Progress' &&
-          newStatus !== 'Submitted' &&
-          newStatus !== 'Graded') {
-        properties.Status = { select: { name: 'In Progress' } };
-      }
-
-      // If existing status is "Submitted", only update if new status is "Graded"
-      if (existingStatus === 'Submitted' && newStatus !== 'Graded') {
-        properties.Status = { select: { name: 'Submitted' } };
+      if (existingStatus) {
+        const preserved = resolvePreservedStatus(existingStatus, newStatus);
+        if (preserved !== newStatus) {
+          properties.Status = { select: { name: preserved } };
+        }
       }
     } catch (error) {
       // If we can't fetch the current page, just use the new status

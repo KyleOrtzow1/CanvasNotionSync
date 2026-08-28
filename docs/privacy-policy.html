@@ -32,7 +32,7 @@
 <h2>Data We Collect</h2>
 <p>The Extension collects and stores the following data, all provided directly by the user or retrieved from APIs the user has authorized:</p>
 <ul>
-  <li><strong>Canvas API token</strong> &mdash; used to authenticate requests to your Canvas LMS instance</li>
+  <li><strong>Canvas API token (optional)</strong> &mdash; stored only if you choose to provide one. By default the Extension authenticates to Canvas using your existing browser session and stores no Canvas credential.</li>
   <li><strong>Notion integration token</strong> &mdash; used to authenticate requests to the Notion API</li>
   <li><strong>Notion database ID</strong> &mdash; identifies which Notion database to sync assignments to</li>
   <li><strong>Assignment data</strong> &mdash; titles, due dates, point values, submission statuses, grades, course names, and assignment descriptions retrieved from the Canvas API</li>
@@ -42,7 +42,7 @@
 
 <h2>How Data Is Stored</h2>
 <ul>
-  <li>All API tokens are encrypted using <strong>AES-GCM 256-bit encryption</strong> with a unique 96-bit initialization vector before being saved to <code>chrome.storage.local</code>.</li>
+  <li>Any API tokens you provide are encrypted using <strong>AES-GCM 256-bit encryption</strong> with a unique 96-bit initialization vector before being saved to <code>chrome.storage.local</code>.</li>
   <li>Assignment data is cached locally in <code>chrome.storage.local</code> with a <strong>30-day time-to-live</strong>. Expired entries are automatically removed.</li>
   <li>All data is stored entirely on your device. No data is sent to any server operated by the Extension developer.</li>
 </ul>
@@ -50,7 +50,7 @@
 <h2>Third-Party Services</h2>
 <p>The Extension communicates with two external services, both at the explicit direction of the user:</p>
 <ul>
-  <li><strong>Canvas LMS API</strong> (<code>*.instructure.com</code>) &mdash; to retrieve course and assignment data using your Canvas API token</li>
+  <li><strong>Canvas LMS API</strong> (<code>*.instructure.com</code>) &mdash; to retrieve course and assignment data, authenticated with your existing Canvas browser session (or with a Canvas API token, if you provided one)</li>
   <li><strong>Notion API</strong> (<code>api.notion.com</code>) &mdash; to create, update, and query pages in your Notion database using your Notion integration token</li>
 </ul>
 <p>The Extension does not send data to any other third-party service, analytics provider, or advertising network.</p>
