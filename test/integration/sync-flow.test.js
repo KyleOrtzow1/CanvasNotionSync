@@ -102,7 +102,10 @@ function makeStatefulFetch({ onUpdate = null } = {}) {
         properties: {
           'Canvas ID': {
             rich_text: [{ plain_text: p.canvasId, text: { content: p.canvasId } }]
-          }
+          },
+          ...(p.status !== undefined
+            ? { 'Status': { select: p.status === null ? null : { name: p.status } } }
+            : {})
         }
       }));
       return ok({ results, has_more: false });
@@ -114,8 +117,9 @@ function makeStatefulFetch({ onUpdate = null } = {}) {
       const pageId = `page-${++pageCounter}`;
       // Extract canvasId from properties to track in our "Notion"
       const canvasIdProp = body.properties?.['Canvas ID']?.rich_text?.[0]?.text?.content;
+      const status = body.properties?.Status?.select?.name;
       if (canvasIdProp) {
-        pages.set(canvasIdProp, { pageId, canvasId: canvasIdProp, archived: false });
+        pages.set(canvasIdProp, { pageId, canvasId: canvasIdProp, archived: false, status });
       }
       return ok({ id: pageId });
     }
@@ -123,17 +127,26 @@ function makeStatefulFetch({ onUpdate = null } = {}) {
     // Page get (GET /pages/:id)
     if (url.match(/\/pages\/[^/]+$/) && (!opts?.method || opts.method === 'GET')) {
       const pageId = url.split('/').pop();
-      return ok({ id: pageId, properties: {} });
+      const entry = Array.from(pages.values()).find(p => p.pageId === pageId);
+      const properties = entry?.status !== undefined
+        ? { Status: entry.status === null ? null : { select: { name: entry.status } } }
+        : {};
+      return ok({ id: pageId, properties });
     }
 
     // Page update (PATCH /pages/:id)
     if (url.match(/\/pages\/[^/]+$/) && opts?.method === 'PATCH') {
       const pageId = url.split('/').pop();
       const body = JSON.parse(opts.body || '{}');
-      // Track archive status
+      // Track archive status and any Status property changes
       for (const [, v] of pages.entries()) {
-        if (v.pageId === pageId && body.archived === true) {
-          v.archived = true;
+        if (v.pageId === pageId) {
+          if (body.archived === true) {
+            v.archived = true;
+          }
+          if (body.properties?.Status?.select?.name !== undefined) {
+            v.status = body.properties.Status.select.name;
+          }
         }
       }
       if (onUpdate) onUpdate(pageId, opts);
@@ -342,6 +355,128 @@ describe('Integration — onProgress callback', () => {
 
     const completeCall = progressCalls.find(p => p.phase === 'complete');
     expect(completeCall.errorCount).toBeGreaterThan(0);
+  });
+});
+
+describe('Integration — status correction via Notion truth map (issue #24)', () => {
+  test('corrects a status manually regressed backward in Notion using Canvas truth', async () => {
+    const { fetchMock, pages } = makeStatefulFetch();
+    globalThis.fetch = fetchMock;
+    const api = new NotionAPI('test-token');
+    const cache = new AssignmentCacheManager();
+    const syncer = new AssignmentSyncer(api, DB_ID, cache);
+    const assignment = makeAssignment(80, 'Graded Assignment', COURSE_A, { status: 'Graded' });
+
+    // First sync: creates the page in Notion with status Graded, caches it.
+    await syncer.syncAssignments([assignment], [COURSE_A]);
+    expect(pages.get('80').status).toBe('Graded');
+
+    // Simulate a manual out-of-band Notion edit: the user drags the status
+    // back to "Not Started" directly in Notion (not through this program).
+    pages.get('80').status = 'Not Started';
+
+    // Second sync: Canvas data is unchanged (still Graded), so the
+    // field-diff cache alone would report no changes and skip this
+    // assignment — the Notion truth map must catch the regression instead.
+    const results = await syncer.syncAssignments([assignment], [COURSE_A]);
+
+    expect(pages.get('80').status).toBe('Graded');
+    expect(results.updated.some(u => u.canvasId === '80')).toBe(true);
+    expect(results.skipped.some(s => s.canvasId === '80')).toBe(false);
+  });
+
+  test('does not add getPage calls for assignments whose status has not regressed', async () => {
+    const { fetchMock, pages } = makeStatefulFetch();
+    globalThis.fetch = fetchMock;
+    const api = new NotionAPI('test-token');
+    const cache = new AssignmentCacheManager();
+    const syncer = new AssignmentSyncer(api, DB_ID, cache);
+
+    const stable1 = makeAssignment(81, 'Stable Assignment 1', COURSE_A, { status: 'Submitted' });
+    const stable2 = makeAssignment(82, 'Stable Assignment 2', COURSE_A, { status: 'Not Started' });
+    const regressed = makeAssignment(83, 'Regressed Assignment', COURSE_A, { status: 'Graded' });
+
+    // First sync: create all three, cache them.
+    await syncer.syncAssignments([stable1, stable2, regressed], [COURSE_A]);
+
+    // Manually regress only one assignment's Notion status out of band.
+    pages.get('83').status = 'Not Started';
+
+    fetchMock.mockClear();
+    const results = await syncer.syncAssignments([stable1, stable2, regressed], [COURSE_A]);
+
+    // The truth map is built entirely from the data-source query already
+    // made at Step 0 — this path must add zero getPage calls.
+    const getPageCalls = fetchMock.mock.calls.filter(([url, opts]) =>
+      /\/pages\/[^/]+$/.test(url) && (!opts?.method || opts.method === 'GET')
+    );
+    expect(getPageCalls.length).toBe(0);
+
+    expect(results.updated.some(u => u.canvasId === '83')).toBe(true);
+    expect(results.skipped.some(s => s.canvasId === '81')).toBe(true);
+    expect(results.skipped.some(s => s.canvasId === '82')).toBe(true);
+    expect(pages.get('83').status).toBe('Graded');
+  });
+
+  test('truth map null (reconciliation failed) — sync completes without throwing and attempts no status correction', async () => {
+    const pages = new Map();
+    let queryCallCount = 0;
+
+    globalThis.fetch = jest.fn(async (url, opts) => {
+      const ok = (body) => ({
+        ok: true, status: 200, headers: { get: () => null },
+        json: async () => body, text: async () => JSON.stringify(body)
+      });
+
+      if (url.match(/\/databases\//)) return ok({ id: DB_ID, data_sources: [{ id: DS_ID }] });
+
+      if (url.match(/\/data_sources\//)) {
+        queryCallCount++;
+        if (queryCallCount === 1) {
+          // First sync: reconciliation succeeds normally, nothing exists yet.
+          return ok({ results: [], has_more: false });
+        }
+        // Second sync: reconciliation fails — simulate a network error.
+        return { ok: false, status: 500, headers: { get: () => null },
+          json: async () => ({ message: 'server error' }),
+          text: async () => '{"message":"server error"}' };
+      }
+
+      if (url.endsWith('/pages') && opts?.method === 'POST') {
+        const body = JSON.parse(opts.body || '{}');
+        const pageId = 'page-truth-null';
+        const canvasIdProp = body.properties?.['Canvas ID']?.rich_text?.[0]?.text?.content;
+        pages.set(canvasIdProp, { pageId, status: body.properties?.Status?.select?.name });
+        return ok({ id: pageId });
+      }
+
+      if (url.match(/\/pages\/[^/]+$/) && opts?.method === 'PATCH') {
+        return ok({ id: url.split('/').pop() });
+      }
+
+      return ok({});
+    });
+
+    const api = new NotionAPI('test-token');
+    const cache = new AssignmentCacheManager();
+    const syncer = new AssignmentSyncer(api, DB_ID, cache);
+    const assignment = makeAssignment(84, 'No-truth-map Assignment', COURSE_A, { status: 'Graded' });
+
+    // First sync: creates and caches normally.
+    await syncer.syncAssignments([assignment], [COURSE_A]);
+
+    // Second sync: same Canvas data (no field diff), and Step 0's
+    // reconciliation fails, so _notionTruthMap stays null. The sync must
+    // complete without throwing, and — with no truth map to consult — must
+    // not attempt a status correction; the assignment is simply skipped.
+    let results;
+    await expect((async () => { results = await syncer.syncAssignments([assignment], [COURSE_A]); })())
+      .resolves.not.toThrow();
+
+    expect(results).toBeDefined();
+    expect(results.errors.length).toBe(0);
+    expect(results.skipped.some(s => s.canvasId === '84')).toBe(true);
+    expect(results.updated.some(u => u.canvasId === '84')).toBe(false);
   });
 });
 

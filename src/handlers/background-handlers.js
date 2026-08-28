@@ -9,11 +9,16 @@ const { getUserFriendlyNotionError } = globalThis;
 import '../utils/sync-logger.js';
 const { SyncLogger } = globalThis;
 import '../utils/canvas-hosts.js';
-const { CANVAS_TAB_PATTERNS, CANVAS_HOST_RE } = globalThis;
+const { CANVAS_TAB_PATTERNS } = globalThis;
 import { checkStorageQuota, cleanupOldCache } from '../utils/storage-monitor.js';
 
 // Cache manager singleton instance
 let assignmentCacheInstance = null;
+
+// Guards against an auto-sync tick overlapping a sync already in progress
+// (manual or periodic). Module-scope only — intentionally not persisted, so
+// it self-corrects if the service worker is torn down mid-sync.
+let syncInProgress = false;
 
 /**
  * Get singleton assignment cache instance
@@ -27,6 +32,11 @@ export function getAssignmentCache() {
 }
 
 export async function handleBackgroundSync(canvasToken, options = {}) {
+  if (syncInProgress) {
+    throw new Error('Sync already in progress');
+  }
+  syncInProgress = true;
+
   try {
     const forceRefresh = options.forceRefresh || false;
 
@@ -125,6 +135,8 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
   } catch (error) {
     Debug.error('Background sync failed:', error.message);
     throw error;
+  } finally {
+    syncInProgress = false;
   }
 }
 
@@ -277,26 +289,6 @@ export function showNotification(title, message) {
   });
 }
 
-// Navigation monitoring
-export function setupNavigationHandlers() {
-  chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    if (changeInfo.status === 'complete' &&
-        tab.url &&
-        CANVAS_HOST_RE.test(tab.url)) {
-      
-      // Inject content script if needed and trigger extraction
-      setTimeout(() => {
-        chrome.tabs.sendMessage(tabId, {
-          type: 'CHECK_FOR_ASSIGNMENTS',
-          url: tab.url
-        }).catch(() => {
-          // Content script might not be loaded yet, ignore
-        });
-      }, 2000);
-    }
-  });
-}
-
 // Periodic sync alarm
 export function setupPeriodicSync() {
   chrome.alarms.create('periodicSync', {
@@ -304,19 +296,35 @@ export function setupPeriodicSync() {
     periodInMinutes: 30
   });
 
-  chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === 'periodicSync') {
-      // Check if we have active Canvas tabs
-      chrome.tabs.query({url: CANVAS_TAB_PATTERNS}, (tabs) => {
-        if (tabs.length > 0) {
-          // Trigger sync on active Canvas tab
-          chrome.tabs.sendMessage(tabs[0].id, {
-            type: 'AUTO_SYNC_REQUEST'
-          }).catch(() => {
-            // Content script not loaded, ignore
-          });
-        }
-      });
+  chrome.alarms.onAlarm.addListener(async (alarm) => {
+    if (alarm.name !== 'periodicSync') return;
+
+    try {
+      const credentials = await CredentialManager.getCredentials();
+      if (!credentials.notionToken || !credentials.notionDatabaseId) {
+        // Not configured yet — nothing to sync.
+        return;
+      }
+      // canvasToken may be null/undefined; handleBackgroundSync's session-cookie
+      // path (see #33) handles that fine.
+      await handleBackgroundSync(credentials.canvasToken);
+    } catch (error) {
+      if (error.message === 'Sync already in progress') {
+        // A manual sync (or an overlapping auto-sync tick) is already running.
+        // Skip silently — missing one tick costs nothing, the next one will run.
+        return;
+      }
+      if (error.message && error.message.startsWith('No Canvas tabs found')) {
+        // Expected most of the time — the user simply isn't on Canvas right
+        // now. Not worth a loud error entry every 30 minutes.
+        return;
+      }
+
+      // A genuine failure (auth rejection, Notion error, etc.) — surface it
+      // where a user would actually look, instead of swallowing it.
+      SyncLogger.error(`Periodic auto-sync failed: ${error.message}`, { error: error.message });
+      await SyncLogger.flush();
+      Debug.error('Periodic auto-sync failed:', error.message);
     }
   });
 }

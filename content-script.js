@@ -42,6 +42,11 @@ class CanvasAPIExtractor {
         case 'SET_CANVAS_TOKEN':
           this.canvasToken = request.token;
           break;
+        case 'TEST_CANVAS_CONNECTION':
+          this.testConnection()
+            .then(result => sendResponse({ success: true, ...result }))
+            .catch(error => sendResponse({ success: false, error: error.message }));
+          return true;
       }
     });
   }
@@ -70,7 +75,49 @@ class CanvasAPIExtractor {
       throw new Error('Canvas instance not detected');
     }
 
-    return await this.extractWithAPIToken();
+    try {
+      return await this.extractWithAPIToken();
+    } catch (error) {
+      // Only the error path writes a terminal sync_progress state here. The success
+      // path deliberately leaves sync_progress alone: handleBackgroundSync writes
+      // phase: 'complete' itself once the whole sync (extraction + Notion write)
+      // finishes, and if we also wrote active: false here, the UI would flash back
+      // to idle mid-sync. But a failure (or a caller that messages
+      // EXTRACT_ASSIGNMENTS directly, bypassing handleBackgroundSync entirely, e.g.
+      // a stray direct call) must not leave sync_progress.active stuck at true
+      // forever, so we clear it on error regardless of caller.
+      try {
+        await chrome.storage.local.set({
+          sync_progress: { active: false, phase: 'error', current: 0, total: 0, errorCount: 1, errors: [{ error: error.message }] }
+        });
+      } catch (storageError) {
+        // Progress reporting failures are non-critical
+      }
+      throw error;
+    }
+  }
+
+  async testConnection() {
+    if (!this.baseURL) {
+      throw new Error('Canvas instance not detected');
+    }
+
+    try {
+      const { data } = await this.rateLimiter.execute(async () => {
+        return await this._fetchWithHeaders(`${this.baseURL}/users/self`);
+      });
+
+      return { name: data.name, id: data.id };
+    } catch (error) {
+      Debug.error('Canvas connection test failed:', error.message);
+      if (typeof getUserFriendlyCanvasError === 'function') {
+        const friendly = getUserFriendlyCanvasError(error);
+        const friendlyError = new Error(`${friendly.title}: ${friendly.message} ${friendly.action}`);
+        friendlyError.status = error.status;
+        throw friendlyError;
+      }
+      throw error;
+    }
   }
 
   async extractWithAPIToken() {

@@ -26,6 +26,7 @@ const mockStorage = {
 };
 
 const messageListeners = [];
+const alarmListeners = [];
 
 globalThis.chrome = {
   storage: { local: mockStorage },
@@ -44,7 +45,7 @@ globalThis.chrome = {
   },
   alarms: {
     create: jest.fn(),
-    onAlarm: { addListener: jest.fn() }
+    onAlarm: { addListener: jest.fn((fn) => alarmListeners.push(fn)) }
   },
   scripting: {
     executeScript: jest.fn(async () => {})
@@ -53,13 +54,17 @@ globalThis.chrome = {
 
 // Load error-messages.js so getUserFriendlyNotionError is available globally
 await import('../src/utils/error-messages.js');
+// Load sync-logger.js so globalThis.SyncLogger is available
+await import('../src/utils/sync-logger.js');
+const { SyncLogger } = globalThis;
 
 // ---------------------------------------------------------------------------
 // Import handlers under test
 // ---------------------------------------------------------------------------
 
-const { showNotification, testNotionConnection } = await import('../src/handlers/background-handlers.js');
+const { showNotification, testNotionConnection, setupPeriodicSync } = await import('../src/handlers/background-handlers.js');
 const { setupMessageHandlers } = await import('../src/handlers/message-handlers.js');
+const { CredentialManager } = await import('../src/credentials/credential-manager.js');
 
 // ---------------------------------------------------------------------------
 // showNotification
@@ -223,4 +228,86 @@ describe('setupMessageHandlers — message routing', () => {
     // Shape: { success: true } or { success: false, error: ... }
     expect(typeof response.success).toBe('boolean');
   });
+});
+
+// ---------------------------------------------------------------------------
+// setupPeriodicSync — periodic auto-sync alarm (issue #34)
+// ---------------------------------------------------------------------------
+
+describe('setupPeriodicSync — periodic auto-sync alarm', () => {
+  let capturedAlarmListener;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    mockStorage._data = {};
+    alarmListeners.length = 0;
+    SyncLogger._logs = [];
+    SyncLogger._buffer = [];
+
+    chrome.tabs.query.mockImplementation(async () => [{ id: 1, url: 'https://school.instructure.com' }]);
+    chrome.tabs.sendMessage.mockImplementation(async () => ({ success: true, assignments: [], activeCourseIds: [] }));
+
+    setupPeriodicSync();
+    capturedAlarmListener = alarmListeners[alarmListeners.length - 1];
+  });
+
+  test('ignores alarms that are not periodicSync', async () => {
+    await capturedAlarmListener({ name: 'someOtherAlarm' });
+    expect(chrome.tabs.query).not.toHaveBeenCalled();
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+  });
+
+  test('with no credentials stored, the tick returns without attempting a sync', async () => {
+    await capturedAlarmListener({ name: 'periodicSync' });
+    expect(chrome.tabs.query).not.toHaveBeenCalled();
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+  });
+
+  test('firing the periodicSync alarm with credentials configured invokes the sync path', async () => {
+    await CredentialManager.storeCredentials('canvas-token', 'notion-token', 'db-1');
+
+    await capturedAlarmListener({ name: 'periodicSync' });
+
+    expect(chrome.tabs.query).toHaveBeenCalled();
+    const sentTypes = chrome.tabs.sendMessage.mock.calls.map(([, msg]) => msg.type);
+    expect(sentTypes).toContain('SET_CANVAS_TOKEN');
+    expect(sentTypes).toContain('EXTRACT_ASSIGNMENTS');
+  });
+
+  test('a second tick while a sync is already in flight is skipped and does not double-write sync_progress', async () => {
+    await CredentialManager.storeCredentials('canvas-token', 'notion-token', 'db-1');
+
+    let releaseExtract;
+    const gate = new Promise((resolve) => { releaseExtract = resolve; });
+    chrome.tabs.sendMessage.mockImplementation(async (tabId, msg) => {
+      if (msg.type === 'EXTRACT_ASSIGNMENTS') {
+        await gate;
+        return { success: true, assignments: [], activeCourseIds: [] };
+      }
+      return {};
+    });
+
+    const firstTick = capturedAlarmListener({ name: 'periodicSync' });
+    // Let the first tick run up to (and block on) the extraction call.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const writesBeforeSecondTick = mockStorage.set.mock.calls.length;
+    await capturedAlarmListener({ name: 'periodicSync' });
+    expect(mockStorage.set.mock.calls.length).toBe(writesBeforeSecondTick);
+
+    releaseExtract();
+    await firstTick;
+  });
+
+  test('a throwing sync is logged via SyncLogger rather than swallowed', async () => {
+    await CredentialManager.storeCredentials('canvas-token', 'notion-token', 'db-1');
+    // Every content-script handshake fails (tab exists, but nothing ever answers) —
+    // a genuine failure, distinct from the expected "no Canvas tabs" skip case.
+    chrome.tabs.sendMessage.mockRejectedValue(new Error('Could not establish connection. Receiving end does not exist.'));
+
+    await capturedAlarmListener({ name: 'periodicSync' });
+
+    const logged = SyncLogger.getLogs(20);
+    expect(logged.some((entry) => entry.level === 'error')).toBe(true);
+  }, 10000);
 });

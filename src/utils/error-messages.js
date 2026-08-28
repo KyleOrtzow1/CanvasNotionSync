@@ -96,7 +96,7 @@ function getUserFriendlyCanvasError(error) {
   return {
     title: 'Canvas Sync Error',
     message: error.message || 'An unexpected error occurred while communicating with Canvas.',
-    action: 'Try again. If the problem persists, check your Canvas token and network connection.'
+    action: 'Try again. If the problem persists, make sure you\'re signed in to Canvas in this browser and check your network connection.'
   };
 }
 

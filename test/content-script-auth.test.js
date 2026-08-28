@@ -55,11 +55,20 @@ describe('CanvasAPIExtractor request authentication', () => {
       }))
     };
 
-    globalThis.getUserFriendlyCanvasError = (error) => ({
-      title: 'Canvas Error',
-      message: error.message,
-      action: ''
-    });
+    globalThis.getUserFriendlyCanvasError = (error) => {
+      if (error.status === 401) {
+        return {
+          title: 'Canvas Session Expired',
+          message: 'Canvas did not accept the request because your Canvas session is no longer signed in.',
+          action: 'Log back in to Canvas in this browser and refresh the page, then try again.'
+        };
+      }
+      return {
+        title: 'Canvas Error',
+        message: error.message,
+        action: ''
+      };
+    };
 
     globalThis.window = {
       canvasNotionExtractorLoaded: false,
@@ -177,5 +186,136 @@ describe('CanvasAPIExtractor request authentication', () => {
 
     extractor.baseURL = null;
     await expect(extractor.extractAssignments()).rejects.toThrow('Canvas instance not detected');
+  });
+
+  // --- issue #27: lightweight connection test -----------------------------
+
+  test('testConnection issues exactly one fetch, to /users/self, and returns the caller identity', async () => {
+    globalThis.window.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: { get: jest.fn(() => null) },
+      json: async () => ({ id: 42, name: 'Jane Doe' }),
+      text: async () => ''
+    }));
+
+    const extractor = new CanvasAPIExtractor();
+    extractor.baseURL = 'https://school.instructure.com/api/v1';
+
+    const result = await extractor.testConnection();
+
+    expect(globalThis.window.fetch).toHaveBeenCalledTimes(1);
+    expect(globalThis.window.fetch.mock.calls[0][0]).toBe('https://school.instructure.com/api/v1/users/self');
+    expect(result).toEqual({ name: 'Jane Doe', id: 42 });
+  });
+
+  test('testConnection sends the bearer header when a token is set, omits it when not', async () => {
+    const withoutToken = new CanvasAPIExtractor();
+    withoutToken.baseURL = 'https://school.instructure.com/api/v1';
+    withoutToken.canvasToken = null;
+    await withoutToken.testConnection();
+    expect(fetchOptions().headers).not.toHaveProperty('Authorization');
+
+    globalThis.window.fetch.mockClear();
+
+    const withToken = new CanvasAPIExtractor();
+    withToken.baseURL = 'https://school.instructure.com/api/v1';
+    withToken.canvasToken = 'canvas-token-123';
+    await withToken.testConnection();
+    expect(fetchOptions().headers['Authorization']).toBe('Bearer canvas-token-123');
+  });
+
+  test('testConnection writes no sync_progress key (regression guard for the stuck indicator)', async () => {
+    const extractor = new CanvasAPIExtractor();
+    extractor.baseURL = 'https://school.instructure.com/api/v1';
+
+    await extractor.testConnection();
+
+    const progressWrites = globalThis.chrome.storage.local.set.mock.calls.filter(
+      ([arg]) => arg && Object.prototype.hasOwnProperty.call(arg, 'sync_progress')
+    );
+    expect(progressWrites).toHaveLength(0);
+  });
+
+  test('testConnection surfaces a 401 as success:false with the session-expired copy', async () => {
+    globalThis.window.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      headers: { get: jest.fn(() => null) },
+      json: async () => ({}),
+      text: async () => 'Unauthorized'
+    }));
+
+    const extractor = new CanvasAPIExtractor();
+    extractor.baseURL = 'https://school.instructure.com/api/v1';
+
+    await expect(extractor.testConnection()).rejects.toThrow(/Canvas Session Expired/);
+  });
+
+  test('testConnection bails with "Canvas instance not detected" when baseURL is null, with no fetch attempted', async () => {
+    const extractor = new CanvasAPIExtractor();
+    extractor.baseURL = null;
+
+    await expect(extractor.testConnection()).rejects.toThrow('Canvas instance not detected');
+    expect(globalThis.window.fetch).not.toHaveBeenCalled();
+  });
+
+  test('the runtime message listener answers TEST_CANVAS_CONNECTION with a single /users/self fetch', async () => {
+    globalThis.window.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: { get: jest.fn(() => null) },
+      json: async () => ({ id: 42, name: 'Jane Doe' }),
+      text: async () => ''
+    }));
+
+    const extractor = new CanvasAPIExtractor();
+    extractor.baseURL = 'https://school.instructure.com/api/v1';
+
+    const calls = globalThis.chrome.runtime.onMessage.addListener.mock.calls;
+    const listener = calls[calls.length - 1][0];
+
+    let capturedResponse;
+    let resolveReceived;
+    const responseReceived = new Promise(resolve => { resolveReceived = resolve; });
+    const sendResponse = (response) => {
+      capturedResponse = response;
+      resolveReceived();
+    };
+
+    const keepChannelOpen = listener({ type: 'TEST_CANVAS_CONNECTION' }, {}, sendResponse);
+    expect(keepChannelOpen).toBe(true);
+
+    await responseReceived;
+
+    expect(capturedResponse).toEqual(
+      expect.objectContaining({ success: true, name: 'Jane Doe', id: 42 })
+    );
+    expect(globalThis.window.fetch).toHaveBeenCalledTimes(1);
+    expect(globalThis.window.fetch.mock.calls[0][0]).toBe('https://school.instructure.com/api/v1/users/self');
+  });
+
+  // --- issue #27 step 3: extractAssignments must not strand sync_progress --
+
+  test('a throwing extractAssignments leaves sync_progress.active === false', async () => {
+    const extractor = new CanvasAPIExtractor();
+    extractor.baseURL = 'https://school.instructure.com/api/v1';
+    extractor.extractWithAPIToken = jest.fn(async () => {
+      throw new Error('boom');
+    });
+
+    await expect(extractor.extractAssignments()).rejects.toThrow('boom');
+
+    const progressWrites = globalThis.chrome.storage.local.set.mock.calls
+      .map(([arg]) => arg && arg.sync_progress)
+      .filter(Boolean);
+    expect(progressWrites.length).toBeGreaterThan(0);
+
+    const lastWrite = progressWrites[progressWrites.length - 1];
+    expect(lastWrite.active).toBe(false);
+    expect(lastWrite.phase).toBe('error');
   });
 });
