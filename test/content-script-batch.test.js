@@ -92,6 +92,7 @@ describe('CanvasAPIExtractor parallel batch processing', () => {
       }
     };
 
+    await import('../src/utils/canvas-hosts.js');
     await import('../content-script.js');
     CanvasAPIExtractor = globalThis.CanvasAPIExtractor;
   });

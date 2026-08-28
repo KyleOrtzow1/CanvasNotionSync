@@ -8,6 +8,8 @@ import '../utils/error-messages.js';
 const { getUserFriendlyNotionError } = globalThis;
 import '../utils/sync-logger.js';
 const { SyncLogger } = globalThis;
+import '../utils/canvas-hosts.js';
+const { CANVAS_TAB_PATTERNS } = globalThis;
 import { checkStorageQuota, cleanupOldCache } from '../utils/storage-monitor.js';
 
 // Cache manager singleton instance
@@ -53,7 +55,7 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
 
     // Find active Canvas tabs
     const tabs = await chrome.tabs.query({
-      url: "*://*.instructure.com/*"
+      url: CANVAS_TAB_PATTERNS
     });
 
     if (tabs.length === 0) {
@@ -80,7 +82,7 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
       try {
         await chrome.scripting.executeScript({
           target: { tabId: activeTab.id },
-          files: ['src/utils/debug.js', 'src/utils/error-messages.js', 'src/validators/canvas-validator.js', 'src/api/canvas-rate-limiter.js', 'content-script.js']
+          files: ['src/utils/debug.js', 'src/utils/error-messages.js', 'src/utils/canvas-hosts.js', 'src/validators/canvas-validator.js', 'src/api/canvas-rate-limiter.js', 'content-script.js']
         });
         
         // Wait for script to initialize

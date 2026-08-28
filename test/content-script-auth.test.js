@@ -101,6 +101,7 @@ describe('CanvasAPIExtractor request authentication', () => {
       }
     };
 
+    await import('../src/utils/canvas-hosts.js');
     await import('../content-script.js');
     CanvasAPIExtractor = globalThis.CanvasAPIExtractor;
   });
