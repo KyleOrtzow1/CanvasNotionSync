@@ -1,4 +1,5 @@
 // Canvas-Notion Sync Popup Script - Enhanced for Canvas API
+/* global normalizeNotionDatabaseId */
 document.addEventListener('DOMContentLoaded', function() {
   // Get DOM elements
   const canvasTokenInput = document.getElementById('canvasToken');
@@ -89,30 +90,22 @@ document.addEventListener('DOMContentLoaded', function() {
   async function handleSaveConfiguration() {
     const canvasToken = canvasTokenInput.value.trim();
     const notionToken = notionTokenInput.value.trim();
-    const notionDatabaseId = notionDatabaseInput.value.trim();
+    const notionDatabaseValue = notionDatabaseInput.value.trim();
 
-    // Validate required fields
-    if (!notionToken) {
-      showStatus('Notion token is required', 'error');
+    // A partial configuration is saveable: fill in whichever fields you have and come
+    // back for the rest. A field left blank clears that stored credential. Values that
+    // are present are still format-checked.
+    if (notionToken && !notionToken.startsWith('secret_') && !notionToken.startsWith('ntn_')) {
+      showStatus('Invalid Notion token format. Should start with "secret_" or "ntn_"', 'error');
       notionTokenInput.focus();
       return;
     }
 
-    if (!notionDatabaseId) {
-      showStatus('Notion database ID is required', 'error');
+    // Accepts a pasted Notion URL as well as a bare or dashed database ID.
+    const notionDatabaseId = normalizeNotionDatabaseId(notionDatabaseValue);
+    if (notionDatabaseValue && !notionDatabaseId) {
+      showStatus('Could not find a database ID in that value. Paste the Notion database URL, or its 32-character ID', 'error');
       notionDatabaseInput.focus();
-      return;
-    }
-
-    // Validate token format
-    if (!notionToken.startsWith('secret_') && !notionToken.startsWith('ntn_')) {
-      showStatus('Invalid Notion token format. Should start with "secret_" or "ntn_"', 'error');
-      return;
-    }
-
-    // Validate database ID format (32 characters, alphanumeric)
-    if (!/^[a-f0-9]{32}$/i.test(notionDatabaseId.replace(/-/g, ''))) {
-      showStatus('Invalid database ID format. Should be 32 hexadecimal characters', 'error');
       return;
     }
 
@@ -122,8 +115,8 @@ document.addEventListener('DOMContentLoaded', function() {
       const result = await chrome.runtime.sendMessage({
         action: 'STORE_CREDENTIALS',
         canvasToken: canvasToken || null,
-        notionToken: notionToken,
-        notionDatabaseId: notionDatabaseId.replace(/-/g, '')
+        notionToken: notionToken || null,
+        notionDatabaseId: notionDatabaseId || null
       });
 
       if (result.success) {
@@ -147,7 +140,18 @@ document.addEventListener('DOMContentLoaded', function() {
           }
         }
         
-        showStatus('Configuration saved successfully!', 'success');
+        // Show the extracted ID back, so a pasted URL visibly resolves to what was stored.
+        notionDatabaseInput.value = notionDatabaseId;
+
+        const missing = [];
+        if (!notionToken) missing.push('Notion token');
+        if (!notionDatabaseId) missing.push('Notion database ID');
+
+        if (missing.length > 0) {
+          showStatus(`Configuration saved. Still needed to sync: ${missing.join(' and ')}`, 'info');
+        } else {
+          showStatus('Configuration saved successfully!', 'success');
+        }
         updateSyncStatus();
       } else {
         showStatus('Failed to save configuration: ' + result.error, 'error');
@@ -162,7 +166,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   async function handleTestConnection() {
     const notionToken = notionTokenInput.value.trim();
-    const notionDatabaseId = notionDatabaseInput.value.trim();
+    const notionDatabaseId = normalizeNotionDatabaseId(notionDatabaseInput.value);
 
     if (!notionToken || !notionDatabaseId) {
       showStatus('Please enter Notion token and database ID first', 'error');
@@ -175,7 +179,7 @@ document.addEventListener('DOMContentLoaded', function() {
       const result = await chrome.runtime.sendMessage({
         action: 'TEST_NOTION_CONNECTION',
         token: notionToken,
-        databaseId: notionDatabaseId.replace(/-/g, '')
+        databaseId: notionDatabaseId
       });
 
       if (result.success) {
@@ -193,11 +197,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
   async function handleTestCanvasAPI() {
     const canvasToken = canvasTokenInput.value.trim();
-
-    if (!canvasToken) {
-      showStatus('Canvas API token is required for the extension to work', 'error');
-      return;
-    }
 
     try {
       setButtonLoading(testCanvasBtn, 'Testing...');
@@ -275,13 +274,8 @@ document.addEventListener('DOMContentLoaded', function() {
       manualSyncBtn.disabled = true;
       updateSyncProgress('starting', 0, 'Starting sync...');
 
-      // Check for required Canvas API token
+      // Canvas token is optional: same-origin requests fall back to the Canvas session cookie.
       const canvasToken = canvasTokenInput.value.trim();
-      if (!canvasToken) {
-        showStatus('Canvas API token is required. Please add your Canvas API token first.', 'error');
-        resetSyncButton();
-        return;
-      }
 
       // Start background sync — progress updates come via storage listener
       const syncResult = await chrome.runtime.sendMessage({
@@ -323,7 +317,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   function updateSyncStatus() {
     const notionToken = notionTokenInput.value.trim();
-    const notionDatabaseId = notionDatabaseInput.value.trim();
+    const notionDatabaseId = normalizeNotionDatabaseId(notionDatabaseInput.value);
 
     if (notionToken && notionDatabaseId) {
       syncStatusElement.textContent = 'Ready';
