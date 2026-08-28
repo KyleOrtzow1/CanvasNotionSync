@@ -6,11 +6,10 @@ const { Debug } = globalThis;
 import './src/utils/sync-logger.js';
 const { SyncLogger } = globalThis;
 import { setupMessageHandlers } from './src/handlers/message-handlers.js';
-import { setupNavigationHandlers, setupPeriodicSync, setupSecurityHandlers, getAssignmentCache } from './src/handlers/background-handlers.js';
+import { setupPeriodicSync, setupSecurityHandlers, getAssignmentCache } from './src/handlers/background-handlers.js';
 
 // Initialize all handlers
 setupMessageHandlers();
-setupNavigationHandlers();
 setupPeriodicSync();
 setupSecurityHandlers();
 
