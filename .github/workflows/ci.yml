@@ -23,6 +23,9 @@ jobs:
       - name: ESLint security audit
         run: npx eslint src/ --ext .js --config .eslintrc.security.json
 
+      - name: Manifest security check
+        run: npm run check:security
+
       - name: Audit dependencies
         run: npm audit --audit-level=high --omit=dev
 
