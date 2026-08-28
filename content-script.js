@@ -70,10 +70,6 @@ class CanvasAPIExtractor {
       throw new Error('Canvas instance not detected');
     }
 
-    if (!this.canvasToken) {
-      throw new Error('Canvas API token required. Please add your Canvas API token in the extension settings.');
-    }
-
     return await this.extractWithAPIToken();
   }
 
@@ -439,9 +435,15 @@ class CanvasAPIExtractor {
   async _fetchWithHeaders(urlString) {
     const headers = {
       'Accept': 'application/json',
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${this.canvasToken}`
+      'Content-Type': 'application/json'
     };
+
+    // Same-origin requests from this content script authenticate via the user's Canvas
+    // session cookie (see `credentials: 'include'` below), so a token is not required.
+    // Only send a bearer token if the user still has one configured.
+    if (this.canvasToken) {
+      headers['Authorization'] = `Bearer ${this.canvasToken}`;
+    }
 
     // Create a safe fetch function to avoid illegal invocation
     const safeFetch = (() => {

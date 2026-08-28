@@ -194,11 +194,6 @@ document.addEventListener('DOMContentLoaded', function() {
   async function handleTestCanvasAPI() {
     const canvasToken = canvasTokenInput.value.trim();
 
-    if (!canvasToken) {
-      showStatus('Canvas API token is required for the extension to work', 'error');
-      return;
-    }
-
     try {
       setButtonLoading(testCanvasBtn, 'Testing...');
 
@@ -275,13 +270,8 @@ document.addEventListener('DOMContentLoaded', function() {
       manualSyncBtn.disabled = true;
       updateSyncProgress('starting', 0, 'Starting sync...');
 
-      // Check for required Canvas API token
+      // Canvas token is optional: same-origin requests fall back to the Canvas session cookie.
       const canvasToken = canvasTokenInput.value.trim();
-      if (!canvasToken) {
-        showStatus('Canvas API token is required. Please add your Canvas API token first.', 'error');
-        resetSyncButton();
-        return;
-      }
 
       // Start background sync — progress updates come via storage listener
       const syncResult = await chrome.runtime.sendMessage({

@@ -41,10 +41,6 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
       throw new Error('Notion credentials not configured');
     }
 
-    if (!canvasToken) {
-      throw new Error('Canvas token not provided');
-    }
-
     // Find active Canvas tabs
     const tabs = await chrome.tabs.query({
       url: "*://*.instructure.com/*"

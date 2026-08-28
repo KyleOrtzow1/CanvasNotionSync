@@ -4,12 +4,12 @@ const { getUserFriendlyCanvasError, getUserFriendlyNotionError } = globalThis;
 
 describe('getUserFriendlyCanvasError', () => {
 
-  test('maps 401 to invalid token message', () => {
+  test('maps 401 to expired session message', () => {
     const error = { status: 401, message: 'Unauthorized' };
     const result = getUserFriendlyCanvasError(error);
-    expect(result.title).toBe('Invalid Canvas Token');
-    expect(result.message).toContain('invalid or has expired');
-    expect(result.action).toContain('Generate a new token');
+    expect(result.title).toBe('Canvas Session Expired');
+    expect(result.message).toContain('no longer signed in');
+    expect(result.action).toContain('Log back in to Canvas');
   });
 
   test('maps 403 to access denied', () => {
@@ -74,7 +74,7 @@ describe('getUserFriendlyCanvasError', () => {
   test('uses statusCode as fallback for status', () => {
     const error = { statusCode: 401, message: 'Unauthorized' };
     const result = getUserFriendlyCanvasError(error);
-    expect(result.title).toBe('Invalid Canvas Token');
+    expect(result.title).toBe('Canvas Session Expired');
   });
 });
 

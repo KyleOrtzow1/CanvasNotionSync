@@ -2,9 +2,9 @@
 
 const canvasErrorMap = {
   401: {
-    title: 'Invalid Canvas Token',
-    message: 'Your Canvas API token is invalid or has expired.',
-    action: 'Generate a new token in Canvas: Settings > Approved Integrations > New Access Token. Then update it in the extension settings.'
+    title: 'Canvas Session Expired',
+    message: 'Canvas did not accept the request because your Canvas session is no longer signed in.',
+    action: 'Log back in to Canvas in this browser and refresh the page, then try again. If you configured a Canvas API token in the extension settings, it may instead be invalid or expired — clear it to use your Canvas login, or replace it with a new one.'
   },
   403: {
     title: 'Access Denied',
