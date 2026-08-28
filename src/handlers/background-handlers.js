@@ -8,6 +8,8 @@ import '../utils/error-messages.js';
 const { getUserFriendlyNotionError } = globalThis;
 import '../utils/sync-logger.js';
 const { SyncLogger } = globalThis;
+import '../utils/canvas-hosts.js';
+const { CANVAS_TAB_PATTERNS, CANVAS_HOST_RE } = globalThis;
 import { checkStorageQuota, cleanupOldCache } from '../utils/storage-monitor.js';
 
 // Cache manager singleton instance
@@ -43,7 +45,7 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
 
     // Find active Canvas tabs
     const tabs = await chrome.tabs.query({
-      url: "*://*.instructure.com/*"
+      url: CANVAS_TAB_PATTERNS
     });
 
     if (tabs.length === 0) {
@@ -70,7 +72,7 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
       try {
         await chrome.scripting.executeScript({
           target: { tabId: activeTab.id },
-          files: ['src/utils/debug.js', 'src/utils/error-messages.js', 'src/validators/canvas-validator.js', 'src/api/canvas-rate-limiter.js', 'content-script.js']
+          files: ['src/utils/debug.js', 'src/utils/error-messages.js', 'src/utils/canvas-hosts.js', 'src/validators/canvas-validator.js', 'src/api/canvas-rate-limiter.js', 'content-script.js']
         });
         
         // Wait for script to initialize
@@ -278,9 +280,9 @@ export function showNotification(title, message) {
 // Navigation monitoring
 export function setupNavigationHandlers() {
   chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    if (changeInfo.status === 'complete' && 
-        tab.url && 
-        /https:\/\/.*\.instructure\.com/.test(tab.url)) {
+    if (changeInfo.status === 'complete' &&
+        tab.url &&
+        CANVAS_HOST_RE.test(tab.url)) {
       
       // Inject content script if needed and trigger extraction
       setTimeout(() => {
@@ -305,7 +307,7 @@ export function setupPeriodicSync() {
   chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === 'periodicSync') {
       // Check if we have active Canvas tabs
-      chrome.tabs.query({url: "*://*.instructure.com/*"}, (tabs) => {
+      chrome.tabs.query({url: CANVAS_TAB_PATTERNS}, (tabs) => {
         if (tabs.length > 0) {
           // Trigger sync on active Canvas tab
           chrome.tabs.sendMessage(tabs[0].id, {

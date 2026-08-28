@@ -14,7 +14,7 @@
       "https://*.instructure.com/*", 
       "https://*.canvaslms.com/*"
     ],
-    "js": ["src/utils/debug.js", "src/utils/error-messages.js", "src/validators/canvas-validator.js", "src/api/canvas-rate-limiter.js", "content-script.js"],
+    "js": ["src/utils/debug.js", "src/utils/error-messages.js", "src/utils/canvas-hosts.js", "src/validators/canvas-validator.js", "src/api/canvas-rate-limiter.js", "content-script.js"],
     "run_at": "document_idle"
   }],
   
@@ -28,6 +28,7 @@
   
   "host_permissions": [
     "https://*.instructure.com/*",
+    "https://*.canvaslms.com/*",
     "https://api.notion.com/*"
   ],
   
@@ -37,6 +38,6 @@
   },
 
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src https://*.instructure.com https://api.notion.com"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src https://*.instructure.com https://*.canvaslms.com https://api.notion.com"
   }
 }

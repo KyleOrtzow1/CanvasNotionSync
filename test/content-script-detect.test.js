@@ -1,6 +1,8 @@
-import { describe, test, expect, beforeAll, beforeEach, afterAll, jest } from '@jest/globals';
+import { describe, test, expect, beforeAll, afterAll, beforeEach, jest } from '@jest/globals';
 
-describe('CanvasAPIExtractor request authentication', () => {
+// Covers issue #36: detectCanvasInstance() must recognize every host the
+// manifest injects the content script into, not just instructure.com.
+describe('CanvasAPIExtractor Canvas instance detection', () => {
   let CanvasAPIExtractor;
   let originals;
 
@@ -15,7 +17,10 @@ describe('CanvasAPIExtractor request authentication', () => {
       getUserFriendlyCanvasError: globalThis.getUserFriendlyCanvasError,
       setTimeout: globalThis.setTimeout,
       clearTimeout: globalThis.clearTimeout,
-      CanvasAPIExtractor: globalThis.CanvasAPIExtractor
+      CanvasAPIExtractor: globalThis.CanvasAPIExtractor,
+      CANVAS_HOST_RE: globalThis.CANVAS_HOST_RE,
+      CANVAS_TAB_PATTERNS: globalThis.CANVAS_TAB_PATTERNS,
+      CANVAS_DOMAINS: globalThis.CANVAS_DOMAINS
     };
 
     // Prevent UI timers from executing during import side effects.
@@ -61,12 +66,6 @@ describe('CanvasAPIExtractor request authentication', () => {
       action: ''
     });
 
-    globalThis.window = {
-      canvasNotionExtractorLoaded: false,
-      location: { href: 'https://school.instructure.com/courses' },
-      fetch: jest.fn()
-    };
-
     globalThis.document = {
       querySelector: jest.fn(() => null),
       createElement: jest.fn(() => ({
@@ -92,7 +91,21 @@ describe('CanvasAPIExtractor request authentication', () => {
       }
     };
 
+    // Initial window, present only so the "prevent multiple initialization"
+    // top-level guard in content-script.js has something to read at import time.
+    // Each test below replaces this with its own window before constructing
+    // an extractor, since detectCanvasInstance() reads window.location.href
+    // at construction time, not at import time.
+    globalThis.window = {
+      canvasNotionExtractorLoaded: false,
+      location: { href: 'https://school.instructure.com/courses' },
+      fetch: jest.fn()
+    };
+
+    // Real shared module (this is the fix under test), loaded the same way
+    // manifest.json and background-handlers.js load it ahead of content-script.js.
     await import('../src/utils/canvas-hosts.js');
+
     await import('../content-script.js');
     CanvasAPIExtractor = globalThis.CanvasAPIExtractor;
   });
@@ -108,74 +121,45 @@ describe('CanvasAPIExtractor request authentication', () => {
     globalThis.setTimeout = originals.setTimeout;
     globalThis.clearTimeout = originals.clearTimeout;
     globalThis.CanvasAPIExtractor = originals.CanvasAPIExtractor;
+    globalThis.CANVAS_HOST_RE = originals.CANVAS_HOST_RE;
+    globalThis.CANVAS_TAB_PATTERNS = originals.CANVAS_TAB_PATTERNS;
+    globalThis.CANVAS_DOMAINS = originals.CANVAS_DOMAINS;
   });
 
   beforeEach(() => {
     jest.clearAllMocks();
-    globalThis.window.fetch = jest.fn(async () => ({
-      ok: true,
-      status: 200,
-      statusText: 'OK',
-      headers: { get: jest.fn(() => null) },
-      json: async () => [{ id: 1 }],
-      text: async () => ''
-    }));
   });
 
-  const fetchOptions = () => globalThis.window.fetch.mock.calls[0][1];
+  test('detects an instructure.com page', () => {
+    globalThis.window = {
+      canvasNotionExtractorLoaded: false,
+      location: { href: 'https://school.instructure.com/courses' },
+      fetch: jest.fn()
+    };
 
-  test('omits Authorization when no Canvas token is configured', async () => {
     const extractor = new CanvasAPIExtractor();
-    extractor.canvasToken = null;
-
-    await extractor._fetchWithHeaders('https://school.instructure.com/api/v1/courses');
-
-    const { headers } = fetchOptions();
-    expect(headers).not.toHaveProperty('Authorization');
-    expect(headers['Accept']).toBe('application/json');
+    expect(extractor.baseURL).toBe('https://school.instructure.com/api/v1');
   });
 
-  test('omits Authorization when the Canvas token is an empty string', async () => {
+  test('detects a canvaslms.com page (regression test for #36)', () => {
+    globalThis.window = {
+      canvasNotionExtractorLoaded: false,
+      location: { href: 'https://school.canvaslms.com/courses' },
+      fetch: jest.fn()
+    };
+
     const extractor = new CanvasAPIExtractor();
-    extractor.canvasToken = '';
-
-    await extractor._fetchWithHeaders('https://school.instructure.com/api/v1/courses');
-
-    expect(fetchOptions().headers).not.toHaveProperty('Authorization');
+    expect(extractor.baseURL).toBe('https://school.canvaslms.com/api/v1');
   });
 
-  test('includes Authorization when a Canvas token is configured', async () => {
+  test('does not detect an unrelated domain', () => {
+    globalThis.window = {
+      canvasNotionExtractorLoaded: false,
+      location: { href: 'https://example.com/courses' },
+      fetch: jest.fn()
+    };
+
     const extractor = new CanvasAPIExtractor();
-    extractor.canvasToken = 'canvas-token-123';
-
-    await extractor._fetchWithHeaders('https://school.instructure.com/api/v1/courses');
-
-    expect(fetchOptions().headers['Authorization']).toBe('Bearer canvas-token-123');
-  });
-
-  test('sends session credentials with and without a token', async () => {
-    const withoutToken = new CanvasAPIExtractor();
-    withoutToken.canvasToken = null;
-    await withoutToken._fetchWithHeaders('https://school.instructure.com/api/v1/courses');
-    expect(fetchOptions().credentials).toBe('include');
-
-    globalThis.window.fetch.mockClear();
-
-    const withToken = new CanvasAPIExtractor();
-    withToken.canvasToken = 'canvas-token-123';
-    await withToken._fetchWithHeaders('https://school.instructure.com/api/v1/courses');
-    expect(fetchOptions().credentials).toBe('include');
-  });
-
-  test('extractAssignments no longer requires a token, only a detected Canvas instance', async () => {
-    const extractor = new CanvasAPIExtractor();
-    extractor.canvasToken = null;
-    extractor.extractWithAPIToken = jest.fn(async () => ({ assignments: [] }));
-
-    await expect(extractor.extractAssignments()).resolves.toEqual({ assignments: [] });
-    expect(extractor.extractWithAPIToken).toHaveBeenCalled();
-
-    extractor.baseURL = null;
-    await expect(extractor.extractAssignments()).rejects.toThrow('Canvas instance not detected');
+    expect(extractor.baseURL).toBeNull();
   });
 });

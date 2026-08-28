@@ -1,5 +1,5 @@
 // Canvas-Notion Sync: API-Only Assignment Extractor
-/* global CanvasRateLimiter, CanvasValidator, getUserFriendlyCanvasError, Debug */
+/* global CanvasRateLimiter, CanvasValidator, getUserFriendlyCanvasError, Debug, CANVAS_HOST_RE */
 
 // Prevent multiple initialization
 if (!window.canvasNotionExtractorLoaded) {
@@ -47,8 +47,8 @@ class CanvasAPIExtractor {
   }
 
   detectCanvasInstance() {
-    // Extract Canvas base URL from current page
-    const urlMatch = window.location.href.match(/(https:\/\/[^/]+\.instructure\.com)/);
+    // Extract Canvas base URL from current page (any supported Canvas host, see #36)
+    const urlMatch = window.location.href.match(CANVAS_HOST_RE);
     if (urlMatch) {
       this.baseURL = urlMatch[1] + '/api/v1';
     }

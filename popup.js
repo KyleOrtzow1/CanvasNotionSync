@@ -1,5 +1,5 @@
 // Canvas-Notion Sync Popup Script - Enhanced for Canvas API
-/* global normalizeNotionDatabaseId */
+/* global normalizeNotionDatabaseId, CANVAS_TAB_PATTERNS */
 document.addEventListener('DOMContentLoaded', function() {
   // Get DOM elements
   const canvasTokenInput = document.getElementById('canvasToken');
@@ -124,7 +124,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (canvasToken) {
           try {
             const tabs = await chrome.tabs.query({
-              url: "*://*.instructure.com/*"
+              url: CANVAS_TAB_PATTERNS
             });
             
             for (const tab of tabs) {
@@ -203,7 +203,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
       // Send token to content script and test
       const tabs = await chrome.tabs.query({
-        url: "*://*.instructure.com/*",
+        url: CANVAS_TAB_PATTERNS,
         active: true
       });
 
