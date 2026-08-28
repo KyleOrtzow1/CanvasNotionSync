@@ -59,9 +59,11 @@ Next, you'll need to create a Notion integration to allow the extension to acces
 4.  Copy the **Internal Integration Token** that is generated. You will need this for the extension configuration.
 5.  Go to the "Access" tab for your new integration and add your assignments database.
 
-### 3. Obtain a Canvas API Token
+### 3. Canvas Access (Optional)
 
-You will also need to generate an API token from your Canvas account.
+The extension authenticates with Canvas using your browser's existing, logged-in Canvas session, so most users can skip this section entirely — there's nothing to set up. This also means the extension works at institutions that disable student token creation, since no token is required.
+
+If you prefer to use an API token instead, you can generate one from your Canvas account:
 
 1.  Log in to Canvas and go to **Account** > **Settings**.
 2.  Scroll down to the **Approved Integrations** section.
@@ -74,7 +76,7 @@ You will also need to generate an API token from your Canvas account.
 Finally, input the information you've gathered into the extension's settings.
 
 1.  Click on the extension icon in your browser's toolbar.
-2.  Enter the Notion Integration Token, the Notion Database ID, and the Canvas API Token into their respective fields.
+2.  Enter the Notion Integration Token and the Notion Database ID. Leave the Canvas API Token blank unless you specifically want to use one.
 3.  Click **Save Configuration**.
 4.  You can use the "Test" buttons to verify that the connections to Notion and Canvas are working correctly.
 
@@ -91,8 +93,8 @@ You can monitor the sync status, view sync logs, and check storage usage from th
 
 The extension provides user-friendly error messages with actionable next steps. Common issues include:
 
-* **"Canvas API token required"**: A valid Canvas API token has not been saved. Verify your token in the extension settings.
-* **"Token invalid or expired"**: Your Canvas or Notion token has expired. Generate a new token and update the extension settings.
+* **"Canvas session expired"**: You're not signed in to Canvas in this browser. Log back in to Canvas, refresh the page, and try again. If you configured a Canvas API token, it may instead be invalid or expired.
+* **"Notion token invalid or expired"**: Your Notion integration token has expired. Generate a new token and update the extension settings.
 * **"Notion connection failed"**: Incorrect integration token or database ID, or the database has not been shared with your integration.
 * **"Rate limited"**: Too many API requests in a short period. The extension will automatically retry with backoff. If this persists, wait a few minutes before syncing again.
 * **"No Canvas tabs found"**: You must have an active tab open to a Canvas page for sync to work.
