@@ -235,16 +235,27 @@ document.addEventListener('DOMContentLoaded', function() {
           notionDatabaseId: result.databaseId
         });
 
-        if (saveResult.success) {
-          showStatus('✅ Database created and saved! You\'re ready to sync.', 'success');
-        } else {
+        if (!saveResult.success) {
           showStatus('✅ Database created, but saving the configuration failed: ' + saveResult.error + '. Click "Save Configuration" manually.', 'error');
+          openDatabaseTab(result.url);
+          return;
         }
 
-        if (result.url) {
-          chrome.tabs.create({ url: result.url });
-        }
         updateSyncStatus();
+
+        // Populate the new database straight away, so it isn't empty when the
+        // user lands on it.
+        const firstSync = await runInitialSync();
+
+        if (firstSync.ok) {
+          showStatus(`✅ Database created and ${firstSync.count} assignments synced! Opened in a new tab.`, 'success');
+        } else {
+          // The database itself is fine — only the sync didn't run. Say so
+          // plainly rather than making it look like setup failed.
+          showStatus(`✅ Database created and saved. First sync didn't run: ${firstSync.error} You can hit "Sync Now" once that's sorted.`, 'info');
+        }
+
+        openDatabaseTab(result.url);
       } else {
         showStatus('❌ Could not create database: ' + result.error, 'error');
       }
@@ -253,6 +264,49 @@ document.addEventListener('DOMContentLoaded', function() {
     } finally {
       createDatabaseBtn.disabled = false;
       createDatabaseBtn.textContent = 'Create Database';
+    }
+  }
+
+  // Opened inactive on purpose: focusing a new tab closes the popup, which
+  // would hide the sync result the user just waited for.
+  function openDatabaseTab(url) {
+    if (url) {
+      chrome.tabs.create({ url: url, active: false });
+    }
+  }
+
+  /**
+   * Run the first sync right after the database is created, reusing the Sync
+   * Now button's progress bar. Never throws — a failure here (most often no
+   * Canvas tab open) leaves a perfectly good database behind, so the caller
+   * reports it as a partial success rather than an error.
+   * @returns {Promise<{ok: boolean, count?: number, error?: string}>}
+   */
+  async function runInitialSync() {
+    try {
+      manualSyncBtn.disabled = true;
+      updateSyncProgress('starting', 0, 'Syncing assignments...');
+
+      // Canvas token is optional: same-origin requests fall back to the Canvas session cookie.
+      const syncResult = await chrome.runtime.sendMessage({
+        action: 'START_BACKGROUND_SYNC',
+        canvasToken: canvasTokenInput.value.trim()
+      });
+
+      if (!syncResult.success) {
+        return { ok: false, error: syncResult.error };
+      }
+
+      const count = syncResult.assignmentCount || 0;
+      updateSyncProgress('complete', 100, `Synced ${count} assignments!`);
+      lastSyncElement.textContent = formatDate(new Date());
+      await loadStorageQuota();
+      loadErrorStats();
+      return { ok: true, count };
+    } catch (error) {
+      return { ok: false, error: error.message };
+    } finally {
+      resetSyncButton();
     }
   }
 
