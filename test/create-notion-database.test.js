@@ -53,6 +53,7 @@ describe('createNotionDatabase', () => {
       expect.any(String),
       expect.objectContaining({
         'Assignment Name': { title: {} },
+        'Checkbox': { checkbox: {} },
         'Course': expect.any(Object),
         'Due Date': expect.any(Object),
         'Status': expect.any(Object),
@@ -76,6 +77,7 @@ describe('createNotionDatabase', () => {
     expect(listViewsMock).toHaveBeenCalledWith('new-ds-id');
     expect(updateViewMock).toHaveBeenCalledWith('default-view-id', {
       sorts: [
+        { property: 'Checkbox', direction: 'ascending' },
         { property: 'Due Date', direction: 'ascending' },
         { property: 'Assignment Name', direction: 'ascending' }
       ]

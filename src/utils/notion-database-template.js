@@ -6,6 +6,7 @@ export const ASSIGNMENT_DATABASE_TITLE = 'Canvas Assignments';
 
 export const ASSIGNMENT_DATABASE_PROPERTIES = {
   'Assignment Name': { title: {} },
+  'Checkbox': { checkbox: {} },
   'Course': { select: {} },
   'Due Date': { date: {} },
   'Status': {
@@ -27,11 +28,12 @@ export const ASSIGNMENT_DATABASE_PROPERTIES = {
   'Description': { rich_text: {} }
 };
 
-// Default view sort applied to a freshly created database: soonest due first,
-// then alphabetical as a tiebreak. Deliberately excludes anything workspace- or
-// user-specific (e.g. a filter limited to particular course codes) since this
-// template is shared by every install of the extension.
+// Default view sort applied to a freshly created database: unchecked items
+// first, then soonest due, then alphabetical as a final tiebreak. Deliberately
+// excludes anything workspace- or user-specific (e.g. a filter limited to
+// particular course codes) since this template is shared by every install.
 export const ASSIGNMENT_DATABASE_DEFAULT_SORTS = [
+  { property: 'Checkbox', direction: 'ascending' },
   { property: 'Due Date', direction: 'ascending' },
   { property: 'Assignment Name', direction: 'ascending' }
 ];

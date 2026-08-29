@@ -58,6 +58,7 @@ Your Notion database needs the following properties, with names matching exactly
 * **Canvas ID** (Text)
 * **Grade** (Number)
 * **Description** (Text) — optional, only needed if you want assignment descriptions synced
+* **Checkbox** (Checkbox) — optional, not written to by sync; included so the default view can sort unchecked items first
 
 You can set this up two ways:
 
