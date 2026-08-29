@@ -123,6 +123,40 @@ export class NotionAPI {
     return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'createPage'));
   }
 
+  // Create a new database as a child of a page the integration can access
+  async createDatabase(parentPageId, title, properties) {
+    const requestFunction = async () => {
+      const response = await fetch(`${this.baseURL}/databases`, {
+        method: 'POST',
+        headers: this.headers,
+        body: JSON.stringify({
+          parent: { type: 'page_id', page_id: parentPageId },
+          title: [{ type: 'text', text: { content: title } }],
+          properties: properties
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        const error = new Error(`Notion API error: ${response.status} - ${errorText}`);
+        error.status = response.status;
+
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After');
+          if (retryAfter) {
+            error.retryAfter = parseInt(retryAfter) * 1000;
+          }
+        }
+
+        throw error;
+      }
+
+      return await response.json();
+    };
+
+    return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'createDatabase'));
+  }
+
   // Get page by ID
   async getPage(pageId) {
     const requestFunction = async () => {

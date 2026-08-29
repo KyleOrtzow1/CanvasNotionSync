@@ -441,9 +441,9 @@
       <div class="form-group">
         <label for="notionDatabase">Notion Database ID or URL</label>
         <input type="text" id="notionDatabase" placeholder="Paste the database URL, or its 32-character ID">
-        <div class="help-text">Paste the whole Notion database URL and the ID is pulled out for you — a bare or dashed ID works too.</div>
+        <div class="help-text">Paste the whole Notion database URL and the ID is pulled out for you — a bare or dashed ID works too. Don't have a database yet? Use "Create Database" below.</div>
       </div>
-      
+
       <div class="help-text" style="margin-bottom: 8px;">Partial configurations save fine — fill in what you have now and add the rest later.</div>
       <button id="saveBtn" class="btn">Save Configuration</button>
       <button id="testBtn" class="btn btn-secondary">Test Notion</button>
@@ -460,6 +460,17 @@
     </div>
 
     <div class="section">
+      <h3>Don't have a database yet?</h3>
+      <div class="form-group">
+        <label for="notionParentPage">Notion Page to Create It In</label>
+        <input type="text" id="notionParentPage" placeholder="Paste a Notion page URL, or its 32-character ID">
+        <div class="help-text">Create (or pick) any page in Notion, share it with your integration (<strong>"..." menu → Connections → add your integration</strong>), then paste that page's URL here. This needs your Notion Integration Token entered above.</div>
+      </div>
+      <button id="createDatabaseBtn" class="btn btn-secondary">Create Database</button>
+      <div class="help-text" style="margin-top: 8px;">Creates a new "Canvas Assignments" database inside that page, with all the columns sync needs already set up, and fills in the Database ID field above for you.</div>
+    </div>
+
+    <div class="section">
       <h3>Setup Instructions</h3>
       <div style="font-size: 13px; color: #666; line-height: 1.4;">
         <p><strong>1. Create Notion Integration:</strong></p>
@@ -469,11 +480,10 @@
           <li>Copy the "Internal Integration Token"</li>
         </ul>
         
-        <p><strong>2. Share Database:</strong></p>
+        <p><strong>2. Get a Database:</strong></p>
         <ul style="margin: 8px 0; padding-left: 20px;">
-          <li>Open your Notion assignments database</li>
-          <li>Click "Share" → "Invite" → Select your integration</li>
-          <li>Copy the database ID from the URL</li>
+          <li>Easiest: share any Notion page with your integration, paste its URL into "Create Database" below, and click the button — it builds the database and fills in the ID for you.</li>
+          <li>Or manually: open an existing assignments database, click "Share" → "Invite" → select your integration, then copy the database ID from the URL.</li>
         </ul>
         
         <p><strong>3. Canvas Access (optional):</strong></p>

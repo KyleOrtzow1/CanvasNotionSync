@@ -36,9 +36,18 @@ To install the extension from the source code, please follow these steps:
 
 Before you can begin syncing assignments, you will need to configure the extension to connect to your Notion and Canvas accounts.
 
-### 1. Notion Database Setup
+### 1. Create a Notion Integration
 
-First, prepare your Notion database by ensuring it includes the following properties. The names should match exactly to ensure a successful sync.
+First, create a Notion integration to allow the extension to access Notion on your behalf.
+
+1.  Navigate to [notion.so/my-integrations](https://www.notion.so/my-integrations).
+2.  Click on "New integration".
+3.  Provide a name for your integration, such as "Canvas Sync".
+4.  Copy the **Internal Integration Token** that is generated. You will need this for the extension configuration.
+
+### 2. Set Up Your Notion Database
+
+Your Notion database needs the following properties, with names matching exactly:
 
 * **Assignment Name** (Title)
 * **Course** (Select)
@@ -47,17 +56,14 @@ First, prepare your Notion database by ensuring it includes the following proper
 * **Points** (Number)
 * **Link to Resources** (URL)
 * **Canvas ID** (Text)
-* **Grade** (number)
+* **Grade** (Number)
+* **Description** (Text) — optional, only needed if you want assignment descriptions synced
 
-### 2. Create a Notion Integration
+You can set this up two ways:
 
-Next, you'll need to create a Notion integration to allow the extension to access your database.
+**Option A — One click (recommended):** In the extension popup, expand settings, paste your Notion Integration Token, then share any Notion page with your integration (open the page → "..." menu → Connections → add your integration) and paste that page's URL into the "Create Database" field. Clicking **Create Database** builds a new database with all of the columns above already configured, and fills in the Database ID field for you.
 
-1.  Navigate to [notion.so/my-integrations](https://www.notion.so/my-integrations).
-2.  Click on "New integration".
-3.  Provide a name for your integration, such as "Canvas Sync".
-4.  Copy the **Internal Integration Token** that is generated. You will need this for the extension configuration.
-5.  Go to the "Access" tab for your new integration and add your assignments database.
+**Option B — Manual:** Create the database yourself with the properties listed above, then open it in Notion, click "Share" → "Invite" → select your integration, and copy the database ID from the URL.
 
 ### 3. Canvas Access (Optional)
 

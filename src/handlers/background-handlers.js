@@ -1,5 +1,6 @@
 import { CredentialManager } from '../credentials/credential-manager.js';
 import { NotionAPI } from '../api/notion-api.js';
+import { ASSIGNMENT_DATABASE_TITLE, ASSIGNMENT_DATABASE_PROPERTIES } from '../utils/notion-database-template.js';
 import { AssignmentSyncer } from '../sync/assignment-syncer.js';
 import { AssignmentCacheManager } from '../cache/assignment-cache-manager.js';
 import '../utils/debug.js';
@@ -275,6 +276,39 @@ export async function testNotionConnection(token, databaseId) {
 
   } catch (error) {
     Debug.error('Connection test failed:', error.message);
+    const friendly = getUserFriendlyNotionError(error);
+    return { success: false, error: `${friendly.title}: ${friendly.message} ${friendly.action}` };
+  }
+}
+
+// Creates a ready-to-sync assignments database (with the exact columns
+// assignment-syncer.js writes to) as a child of a page the user has already
+// shared with their integration. Powers the "Create Database" popup button.
+export async function createNotionDatabase(token, parentPageId) {
+  try {
+    const notionAPI = new NotionAPI(token);
+    const database = await notionAPI.createDatabase(
+      parentPageId,
+      ASSIGNMENT_DATABASE_TITLE,
+      ASSIGNMENT_DATABASE_PROPERTIES
+    );
+
+    return {
+      success: true,
+      databaseId: database.id,
+      url: database.url,
+      message: `Created "${ASSIGNMENT_DATABASE_TITLE}" with the columns needed for sync.`
+    };
+  } catch (error) {
+    Debug.error('Create database failed:', error.message);
+
+    if (error.status === 404) {
+      return {
+        success: false,
+        error: 'Notion Page Not Found: Could not find that page, or the integration cannot access it. Open the page in Notion, click "..." > "Connections", add your integration, then try again.'
+      };
+    }
+
     const friendly = getUserFriendlyNotionError(error);
     return { success: false, error: `${friendly.title}: ${friendly.message} ${friendly.action}` };
   }

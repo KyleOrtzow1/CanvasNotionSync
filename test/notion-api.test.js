@@ -165,6 +165,50 @@ describe('NotionAPI.createPage', () => {
 });
 
 // ---------------------------------------------------------------------------
+// createDatabase
+// ---------------------------------------------------------------------------
+
+describe('NotionAPI.createDatabase', () => {
+  let api;
+
+  beforeEach(() => {
+    api = new NotionAPI('test-token');
+    globalThis.fetch = jest.fn();
+  });
+
+  test('returns created database on 200', async () => {
+    const payload = { id: 'new-db-id', url: 'https://notion.so/new-db-id', data_sources: [{ id: 'ds1' }] };
+    globalThis.fetch.mockResolvedValueOnce(makeResponse(payload));
+    const result = await api.createDatabase('page1', 'Canvas Assignments', { 'Assignment Name': { title: {} } });
+    expect(result.id).toBe('new-db-id');
+    expect(result.url).toBe('https://notion.so/new-db-id');
+  });
+
+  test('sends page_id parent, title, and properties in body', async () => {
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ id: 'db1' }));
+    const properties = { 'Assignment Name': { title: {} }, 'Course': { select: {} } };
+    await api.createDatabase('parent-page-1', 'Canvas Assignments', properties);
+    const [url, opts] = globalThis.fetch.mock.calls[0];
+    expect(url).toBe('https://api.notion.com/v1/databases');
+    expect(opts.method).toBe('POST');
+    const body = JSON.parse(opts.body);
+    expect(body.parent).toEqual({ type: 'page_id', page_id: 'parent-page-1' });
+    expect(body.title).toEqual([{ type: 'text', text: { content: 'Canvas Assignments' } }]);
+    expect(body.properties).toEqual(properties);
+  });
+
+  test('throws 404 when parent page is not shared with the integration', async () => {
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ message: 'not found' }, 404));
+    await expect(api.createDatabase('missing-page', 'Title', {})).rejects.toMatchObject({ status: 404 });
+  });
+
+  test('throws on 401 invalid token', async () => {
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ message: 'unauthorized' }, 401));
+    await expect(api.createDatabase('page1', 'Title', {})).rejects.toMatchObject({ status: 401 });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // updatePage
 // ---------------------------------------------------------------------------
 

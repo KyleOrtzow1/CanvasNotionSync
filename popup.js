@@ -5,6 +5,8 @@ document.addEventListener('DOMContentLoaded', function() {
   const canvasTokenInput = document.getElementById('canvasToken');
   const notionTokenInput = document.getElementById('notionToken');
   const notionDatabaseInput = document.getElementById('notionDatabase');
+  const notionParentPageInput = document.getElementById('notionParentPage');
+  const createDatabaseBtn = document.getElementById('createDatabaseBtn');
   const saveBtn = document.getElementById('saveBtn');
   const testBtn = document.getElementById('testBtn');
   const testCanvasBtn = document.getElementById('testCanvasBtn');
@@ -34,6 +36,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // Event listeners
   saveBtn.addEventListener('click', handleSaveConfiguration);
   testBtn.addEventListener('click', handleTestConnection);
+  if (createDatabaseBtn) createDatabaseBtn.addEventListener('click', handleCreateDatabase);
   if (testCanvasBtn) testCanvasBtn.addEventListener('click', handleTestCanvasAPI);
   manualSyncBtn.addEventListener('click', handleManualSync);
   if (expandBtn) expandBtn.addEventListener('click', toggleSettings);
@@ -192,6 +195,49 @@ document.addEventListener('DOMContentLoaded', function() {
     } finally {
       testBtn.disabled = false;
       testBtn.textContent = 'Test Notion';
+    }
+  }
+
+  async function handleCreateDatabase() {
+    const notionToken = notionTokenInput.value.trim();
+    const parentPageId = normalizeNotionDatabaseId(notionParentPageInput.value);
+
+    if (!notionToken) {
+      showStatus('Please enter your Notion Integration Token first', 'error');
+      notionTokenInput.focus();
+      return;
+    }
+
+    if (!parentPageId) {
+      showStatus('Paste the URL (or 32-character ID) of a Notion page you shared with your integration', 'error');
+      notionParentPageInput.focus();
+      return;
+    }
+
+    try {
+      setButtonLoading(createDatabaseBtn, 'Creating...');
+
+      const result = await chrome.runtime.sendMessage({
+        action: 'CREATE_NOTION_DATABASE',
+        token: notionToken,
+        parentPageId: parentPageId
+      });
+
+      if (result.success) {
+        notionDatabaseInput.value = result.databaseId;
+        showStatus('✅ Database created! The Database ID field above is filled in — click "Save Configuration" to finish.', 'success');
+        if (result.url) {
+          chrome.tabs.create({ url: result.url });
+        }
+        updateSyncStatus();
+      } else {
+        showStatus('❌ Could not create database: ' + result.error, 'error');
+      }
+    } catch (error) {
+      showStatus('❌ Could not create database: ' + error.message, 'error');
+    } finally {
+      createDatabaseBtn.disabled = false;
+      createDatabaseBtn.textContent = 'Create Database';
     }
   }
 

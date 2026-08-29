@@ -1,5 +1,5 @@
 import { CredentialManager } from '../credentials/credential-manager.js';
-import { handleAssignmentSync, handleBackgroundSync, testNotionConnection, getAssignmentCache } from './background-handlers.js';
+import { handleAssignmentSync, handleBackgroundSync, testNotionConnection, createNotionDatabase, getAssignmentCache } from './background-handlers.js';
 import { checkStorageQuota, cleanupOldCache } from '../utils/storage-monitor.js';
 
 // Message handling
@@ -33,6 +33,12 @@ export function setupMessageHandlers() {
 
       case 'TEST_NOTION_CONNECTION':
         testNotionConnection(request.token, request.databaseId)
+          .then(result => sendResponse(result))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+
+      case 'CREATE_NOTION_DATABASE':
+        createNotionDatabase(request.token, request.parentPageId)
           .then(result => sendResponse(result))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
