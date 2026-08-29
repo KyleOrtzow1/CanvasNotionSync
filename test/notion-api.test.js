@@ -215,6 +215,31 @@ describe('NotionAPI.createDatabase', () => {
 // listViews / updateView
 // ---------------------------------------------------------------------------
 
+describe('NotionAPI.getDataSource', () => {
+  let api;
+
+  beforeEach(() => {
+    api = new NotionAPI('test-token');
+    globalThis.fetch = jest.fn();
+  });
+
+  test('returns the data source schema', async () => {
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({
+      id: 'ds1',
+      properties: { 'Assignment Name': { id: 'title', type: 'title' } }
+    }));
+    const result = await api.getDataSource('ds1');
+    expect(result.properties['Assignment Name'].id).toBe('title');
+    const [url] = globalThis.fetch.mock.calls[0];
+    expect(url).toBe('https://api.notion.com/v1/data_sources/ds1');
+  });
+
+  test('throws on 404', async () => {
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ message: 'not found' }, 404));
+    await expect(api.getDataSource('missing')).rejects.toMatchObject({ status: 404 });
+  });
+});
+
 describe('NotionAPI.listViews', () => {
   let api;
 

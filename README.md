@@ -47,22 +47,23 @@ First, create a Notion integration to allow the extension to access Notion on yo
 
 ### 2. Set Up Your Notion Database
 
-Your Notion database needs the following properties, with names matching exactly:
+Your Notion database needs the following properties, with names matching exactly. Listed in the left-to-right order the **Create Database** button lays them out:
 
-* **Assignment Name** (Title)
+* **Checkbox** (Checkbox) — not written to by sync; a manual "done" column the default view sorts by first
 * **Course** (Select)
-* **Due Date** (Date)
+* **Assignment Name** (Title)
 * **Status** (Select)
-* **Points** (Number)
+* **Due Date** (Date)
 * **Link to Resources** (URL)
-* **Canvas ID** (Text)
-* **Grade** (Number)
+* **Points** (Number)
+* **Notes** (Text) — not written to by sync; free space for your own notes
 * **Description** (Text) — optional, only needed if you want assignment descriptions synced
-* **Checkbox** (Checkbox) — optional, not written to by sync; included so the default view can sort unchecked items first
+* **Canvas ID** (Text)
+* **Grade** (Number) — synced, but hidden in the default view; unhide it in Notion any time
 
 You can set this up two ways:
 
-**Option A — One click (recommended):** In the extension popup, expand settings, paste your Notion Integration Token, then share any Notion page with your integration (open the page → "..." menu → Connections → add your integration) and paste that page's URL into the "Create Database" field. Clicking **Create Database** builds a new database with all of the columns above already configured, fills in the Database ID field, and saves your configuration automatically.
+**Option A — One click (recommended):** In the extension popup, expand settings, paste your Notion Integration Token, then share any Notion page with your integration (open the page → "..." menu → Connections → add your integration) and paste that page's URL into the "Create Database" field. Clicking **Create Database** builds a new database with all of the columns above already configured — in the order shown, sorted by Checkbox, then Due Date, then Assignment Name — fills in the Database ID field, and saves your configuration automatically.
 
 **Option B — Manual:** Create the database yourself with the properties listed above, then open it in Notion, click "Share" → "Invite" → select your integration, and copy the database ID from the URL.
 

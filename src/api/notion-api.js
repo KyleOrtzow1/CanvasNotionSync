@@ -160,6 +160,36 @@ export class NotionAPI {
     return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'createDatabase'));
   }
 
+  // Get a data source, including its property schema. Needed to resolve
+  // property names to the property IDs a view's configuration requires.
+  async getDataSource(dataSourceId) {
+    const requestFunction = async () => {
+      const response = await fetch(`${this.baseURL}/data_sources/${dataSourceId}`, {
+        method: 'GET',
+        headers: this.headers
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        const error = new Error(`Notion API error: ${response.status} - ${errorText}`);
+        error.status = response.status;
+
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After');
+          if (retryAfter) {
+            error.retryAfter = parseInt(retryAfter) * 1000;
+          }
+        }
+
+        throw error;
+      }
+
+      return await response.json();
+    };
+
+    return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'getDataSource'));
+  }
+
   // List the views on a data source (used to find the default view Notion
   // auto-creates alongside a new database, so it can be configured)
   async listViews(dataSourceId) {

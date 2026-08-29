@@ -18,21 +18,35 @@ globalThis.chrome = {
 const createDatabaseMock = jest.fn();
 const listViewsMock = jest.fn();
 const updateViewMock = jest.fn();
+const getDataSourceMock = jest.fn();
 
 await jest.unstable_mockModule('../src/api/notion-api.js', () => ({
   NotionAPI: jest.fn().mockImplementation(() => ({
     createDatabase: createDatabaseMock,
     listViews: listViewsMock,
-    updateView: updateViewMock
+    updateView: updateViewMock,
+    getDataSource: getDataSourceMock
   }))
 }));
 
 const { createNotionDatabase } = await import('../src/handlers/background-handlers.js');
 
+// Stand-in for the schema Notion returns after creating the database: every
+// template property, each with the opaque property ID a view config needs.
+const ALL_COLUMNS = [
+  'Checkbox', 'Course', 'Assignment Name', 'Status', 'Due Date',
+  'Link to Resources', 'Points', 'Notes', 'Description', 'Canvas ID', 'Grade'
+];
+
+function schemaFor(names) {
+  return Object.fromEntries(names.map(name => [name, { id: `id-${name}` }]));
+}
+
 describe('createNotionDatabase', () => {
   beforeEach(() => {
     listViewsMock.mockReset().mockResolvedValue({ results: [{ id: 'default-view-id' }] });
     updateViewMock.mockReset().mockResolvedValue({ id: 'default-view-id' });
+    getDataSourceMock.mockReset().mockResolvedValue({ properties: schemaFor(ALL_COLUMNS) });
   });
 
   test('returns success with the new database id and url', async () => {
@@ -59,13 +73,15 @@ describe('createNotionDatabase', () => {
         'Status': expect.any(Object),
         'Points': expect.any(Object),
         'Link to Resources': expect.any(Object),
+        'Notes': expect.any(Object),
+        'Description': expect.any(Object),
         'Canvas ID': expect.any(Object),
         'Grade': expect.any(Object)
       })
     );
   });
 
-  test('applies the default sort to the auto-created view', async () => {
+  test('applies the default sort and column layout to the auto-created view', async () => {
     createDatabaseMock.mockResolvedValueOnce({
       id: 'new-db-id',
       url: 'https://notion.so/new-db-id',
@@ -80,11 +96,47 @@ describe('createNotionDatabase', () => {
         { property: 'Checkbox', direction: 'ascending' },
         { property: 'Due Date', direction: 'ascending' },
         { property: 'Assignment Name', direction: 'ascending' }
-      ]
+      ],
+      configuration: {
+        type: 'table',
+        properties: [
+          { property_id: 'id-Checkbox', visible: true },
+          { property_id: 'id-Course', visible: true },
+          { property_id: 'id-Assignment Name', visible: true },
+          { property_id: 'id-Status', visible: true },
+          { property_id: 'id-Due Date', visible: true },
+          { property_id: 'id-Link to Resources', visible: true },
+          { property_id: 'id-Points', visible: true },
+          { property_id: 'id-Notes', visible: true },
+          { property_id: 'id-Description', visible: true },
+          { property_id: 'id-Canvas ID', visible: true },
+          { property_id: 'id-Grade', visible: false }
+        ]
+      }
     });
   });
 
-  test('still succeeds if setting the default sort fails', async () => {
+  test('skips columns missing from the returned schema instead of failing', async () => {
+    createDatabaseMock.mockResolvedValueOnce({
+      id: 'new-db-id',
+      url: 'https://notion.so/new-db-id',
+      data_sources: [{ id: 'new-ds-id' }]
+    });
+    getDataSourceMock.mockResolvedValueOnce({
+      properties: schemaFor(['Checkbox', 'Assignment Name', 'Due Date'])
+    });
+
+    const result = await createNotionDatabase('test-token', 'parent-page-id');
+
+    expect(result.success).toBe(true);
+    expect(updateViewMock.mock.calls[0][1].configuration.properties).toEqual([
+      { property_id: 'id-Checkbox', visible: true },
+      { property_id: 'id-Assignment Name', visible: true },
+      { property_id: 'id-Due Date', visible: true }
+    ]);
+  });
+
+  test('still succeeds if configuring the default view fails', async () => {
     createDatabaseMock.mockResolvedValueOnce({
       id: 'new-db-id',
       url: 'https://notion.so/new-db-id',

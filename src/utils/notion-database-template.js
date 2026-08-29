@@ -5,10 +5,9 @@
 export const ASSIGNMENT_DATABASE_TITLE = 'Canvas Assignments';
 
 export const ASSIGNMENT_DATABASE_PROPERTIES = {
-  'Assignment Name': { title: {} },
   'Checkbox': { checkbox: {} },
   'Course': { select: {} },
-  'Due Date': { date: {} },
+  'Assignment Name': { title: {} },
   'Status': {
     select: {
       options: [
@@ -21,12 +20,34 @@ export const ASSIGNMENT_DATABASE_PROPERTIES = {
       ]
     }
   },
-  'Points': { number: { format: 'number' } },
+  'Due Date': { date: {} },
   'Link to Resources': { url: {} },
+  'Points': { number: { format: 'number' } },
+  'Notes': { rich_text: {} },
+  'Description': { rich_text: {} },
   'Canvas ID': { rich_text: {} },
-  'Grade': { number: { format: 'number' } },
-  'Description': { rich_text: {} }
+  'Grade': { number: { format: 'number' } }
 };
+
+// Left-to-right column order for the default table view. A new database's view
+// starts with no explicit configuration, so Notion falls back to its own
+// ordering — these have to be set on the view for the order to stick.
+export const ASSIGNMENT_DATABASE_COLUMN_ORDER = [
+  'Checkbox',
+  'Course',
+  'Assignment Name',
+  'Status',
+  'Due Date',
+  'Link to Resources',
+  'Points',
+  'Notes',
+  'Description',
+  'Canvas ID'
+];
+
+// Synced, but kept off the default view to match the column layout above.
+// Unhide it in Notion any time — sync writes to it either way.
+export const ASSIGNMENT_DATABASE_HIDDEN_COLUMNS = ['Grade'];
 
 // Default view sort applied to a freshly created database: unchecked items
 // first, then soonest due, then alphabetical as a final tiebreak. Deliberately
