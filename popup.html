@@ -695,16 +695,16 @@
           <li class="step" id="setupStep2">
             <div class="step-head">
               <span class="step-num" aria-hidden="true">2</span>
-              <span class="step-title">Add it to a Notion page</span>
+              <span class="step-title">Make a database and connect it</span>
             </div>
             <div class="step-body">
-              <p>In Notion, click <svg class="ui-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="new page"><path d="M20 13v5.5A2.5 2.5 0 0 1 17.5 21h-11A2.5 2.5 0 0 1 4 18.5v-11A2.5 2.5 0 0 1 6.5 5H12"/><path d="M18.3 3.7a1.85 1.85 0 0 1 2.6 2.6l-7.1 7.1-3.4.8.8-3.4z"/></svg> at the top left and select <strong>Page</strong> — the assignments database gets created inside it.</p>
-              <p>Click the <strong>•••</strong> menu at the top right of that page, scroll down to <strong>Connections</strong>, search for <strong>Canvas Sync</strong>, click it, then click <strong>Add to page</strong> and confirm.</p>
-              <p>Copy that page's URL from your browser's address bar.</p>
+              <p>In Notion, click <svg class="ui-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="new page"><path d="M20 13v5.5A2.5 2.5 0 0 1 17.5 21h-11A2.5 2.5 0 0 1 4 18.5v-11A2.5 2.5 0 0 1 6.5 5H12"/><path d="M18.3 3.7a1.85 1.85 0 0 1 2.6 2.6l-7.1 7.1-3.4.8.8-3.4z"/></svg> at the top left and select <strong>Database</strong>. Put it wherever you want your assignments to live.</p>
+              <p>Click the <strong>•••</strong> menu at the top right of it, scroll down to <strong>Connections</strong>, search for <strong>Canvas Sync</strong>, click it, then click <strong>Add to page</strong> and confirm.</p>
+              <p>Copy the database's URL from your browser's address bar.</p>
               <div class="inline-field">
-                <label for="notionParentPage">Paste the page URL</label>
-                <input type="text" id="notionParentPage" placeholder="https://www.notion.so/…" autocomplete="off" spellcheck="false">
-                <div class="field-hint" id="notionParentPageHint">The page's 32-character ID works too.</div>
+                <label for="notionDatabase">Paste the database URL</label>
+                <input type="text" id="notionDatabase" placeholder="https://www.notion.so/…" autocomplete="off" spellcheck="false">
+                <div class="field-hint" id="notionDatabaseHint">The database's 32-character ID works too.</div>
               </div>
             </div>
           </li>
@@ -712,13 +712,13 @@
           <li class="step" id="setupStep3">
             <div class="step-head">
               <span class="step-num" aria-hidden="true">3</span>
-              <span class="step-title">Create the database</span>
+              <span class="step-title">Set up the columns</span>
             </div>
             <div class="step-body">
               <p>Open a Canvas tab first — that's where your assignments are read from — then click:</p>
-              <button id="createDatabaseBtn" class="btn">Create Database</button>
-              <div class="field-hint">Builds a <strong>Canvas Assignments</strong> database inside that page with every column sync needs, then runs your first sync and opens the database so you can watch it fill in.</div>
-              <div id="setupDone" class="setup-done hidden">Connected to database <code id="setupDatabaseId"></code></div>
+              <button id="prepareDatabaseBtn" class="btn">Set Up Database</button>
+              <div class="field-hint">Adds the columns sync needs to that database and sorts its view by due date. Columns you already have are left alone. Then it runs your first sync and opens the database so you can watch it fill in.</div>
+              <div id="setupDone" class="setup-done hidden">Ready to sync into <code id="setupDatabaseId"></code></div>
             </div>
           </li>
 
@@ -736,12 +736,6 @@
       </button>
 
       <div class="accordion-body hidden" id="advancedBody">
-        <div class="form-group">
-          <label for="notionDatabase">Notion database ID or URL</label>
-          <input type="text" id="notionDatabase" placeholder="Paste the database URL, or its 32-character ID">
-          <div class="help-text">Already have a Canvas Assignments database? Paste it here instead of doing step 3. Step 3 fills this in for you.</div>
-        </div>
-
         <div class="form-group">
           <label for="canvasToken">Canvas access token (optional)</label>
           <input type="password" id="canvasToken" placeholder="Not needed — leave blank to use your Canvas login">

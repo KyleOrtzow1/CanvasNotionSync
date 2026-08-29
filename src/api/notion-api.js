@@ -123,45 +123,9 @@ export class NotionAPI {
     return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'createPage'));
   }
 
-  // Create a new database as a child of a page the integration can access
-  async createDatabase(parentPageId, title, properties) {
-    const requestFunction = async () => {
-      const response = await fetch(`${this.baseURL}/databases`, {
-        method: 'POST',
-        headers: this.headers,
-        body: JSON.stringify({
-          parent: { type: 'page_id', page_id: parentPageId },
-          title: [{ type: 'text', text: { content: title } }],
-          // Notion-Version 2025-09-03 splits databases from data sources: the schema
-          // goes under initial_data_source, not top-level `properties` (which that
-          // version silently ignores, creating a database with only a title column).
-          initial_data_source: { properties: properties }
-        })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        const error = new Error(`Notion API error: ${response.status} - ${errorText}`);
-        error.status = response.status;
-
-        if (response.status === 429) {
-          const retryAfter = response.headers.get('Retry-After');
-          if (retryAfter) {
-            error.retryAfter = parseInt(retryAfter) * 1000;
-          }
-        }
-
-        throw error;
-      }
-
-      return await response.json();
-    };
-
-    return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'createDatabase'));
-  }
-
-  // Get a data source, including its property schema. Needed to resolve
-  // property names to the property IDs a view's configuration requires.
+  // Get a data source, including its property schema. Needed to see which
+  // columns a database already has, and to resolve property names to the
+  // property IDs a view's configuration requires.
   async getDataSource(dataSourceId) {
     const requestFunction = async () => {
       const response = await fetch(`${this.baseURL}/data_sources/${dataSourceId}`, {
@@ -188,6 +152,38 @@ export class NotionAPI {
     };
 
     return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'getDataSource'));
+  }
+
+  // Add or rename properties on an existing data source's schema. Used to fit
+  // a database the user built themselves with the columns sync writes to.
+  // Renames are expressed as { '<current name>': { name: '<new name>' } }.
+  async updateDataSourceProperties(dataSourceId, properties) {
+    const requestFunction = async () => {
+      const response = await fetch(`${this.baseURL}/data_sources/${dataSourceId}`, {
+        method: 'PATCH',
+        headers: this.headers,
+        body: JSON.stringify({ properties: properties })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        const error = new Error(`Notion API error: ${response.status} - ${errorText}`);
+        error.status = response.status;
+
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After');
+          if (retryAfter) {
+            error.retryAfter = parseInt(retryAfter) * 1000;
+          }
+        }
+
+        throw error;
+      }
+
+      return await response.json();
+    };
+
+    return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'updateDataSourceProperties'));
   }
 
   // List the views on a data source (used to find the default view Notion

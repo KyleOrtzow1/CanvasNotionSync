@@ -5,8 +5,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const canvasTokenInput = document.getElementById('canvasToken');
   const notionTokenInput = document.getElementById('notionToken');
   const notionDatabaseInput = document.getElementById('notionDatabase');
-  const notionParentPageInput = document.getElementById('notionParentPage');
-  const createDatabaseBtn = document.getElementById('createDatabaseBtn');
+  const prepareDatabaseBtn = document.getElementById('prepareDatabaseBtn');
   const testBtn = document.getElementById('testBtn');
   const testCanvasBtn = document.getElementById('testCanvasBtn');
   const manualSyncBtn = document.getElementById('manualSyncBtn');
@@ -37,7 +36,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const setupDone = document.getElementById('setupDone');
   const setupDatabaseId = document.getElementById('setupDatabaseId');
   const notionTokenHint = document.getElementById('notionTokenHint');
-  const notionParentPageHint = document.getElementById('notionParentPageHint');
+  const notionDatabaseHint = document.getElementById('notionDatabaseHint');
   const advancedToggle = document.getElementById('advancedToggle');
   const advancedBody = document.getElementById('advancedBody');
   const saveIndicator = document.getElementById('saveIndicator');
@@ -48,13 +47,15 @@ document.addEventListener('DOMContentLoaded', function() {
   let saveIndicatorTimer = null;
   // What the service worker currently holds, so a half-typed URL can't clobber it.
   let savedDatabaseId = '';
+  // The database step 3 last set up, so the step stays ticked across popup opens.
+  let preparedDatabaseId = '';
 
   // Load existing configuration
   loadConfiguration();
   
   // Event listeners
   testBtn.addEventListener('click', handleTestConnection);
-  if (createDatabaseBtn) createDatabaseBtn.addEventListener('click', handleCreateDatabase);
+  if (prepareDatabaseBtn) prepareDatabaseBtn.addEventListener('click', handlePrepareDatabase);
   if (testCanvasBtn) testCanvasBtn.addEventListener('click', handleTestCanvasAPI);
   manualSyncBtn.addEventListener('click', handleManualSync);
   if (expandBtn) expandBtn.addEventListener('click', toggleSettings);
@@ -87,11 +88,8 @@ document.addEventListener('DOMContentLoaded', function() {
         savedDatabaseId = credentials.notionDatabaseId;
       }
 
-      // The setup page URL isn't a credential, so it lives in a plain local draft.
-      const draft = await chrome.storage.local.get('setupParentPageUrl');
-      if (draft.setupParentPageUrl) {
-        notionParentPageInput.value = draft.setupParentPageUrl;
-      }
+      const prepared = await chrome.storage.local.get('preparedDatabaseId');
+      preparedDatabaseId = prepared.preparedDatabaseId || '';
 
       updateFieldHints();
 
@@ -165,8 +163,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     try {
-      await chrome.storage.local.set({ setupParentPageUrl: notionParentPageInput.value.trim() });
-
       const result = await chrome.runtime.sendMessage({
         action: 'STORE_CREDENTIALS',
         canvasToken: canvasToken || null,
@@ -213,12 +209,12 @@ document.addEventListener('DOMContentLoaded', function() {
       : 'That doesn\'t look like a Notion access token — it should start with "ntn_".';
     notionTokenHint.classList.toggle('warn', !tokenOk);
 
-    const page = notionParentPageInput.value.trim();
-    const pageOk = !page || Boolean(normalizeNotionDatabaseId(page));
-    notionParentPageHint.textContent = pageOk
-      ? 'The page\'s 32-character ID works too.'
-      : 'No page ID in that link yet — copy the page URL from your browser\'s address bar.';
-    notionParentPageHint.classList.toggle('warn', !pageOk);
+    const database = notionDatabaseInput.value.trim();
+    const databaseOk = !database || Boolean(normalizeNotionDatabaseId(database));
+    notionDatabaseHint.textContent = databaseOk
+      ? 'The database\'s 32-character ID works too.'
+      : 'No database ID in that link yet — copy the database URL from your browser\'s address bar.';
+    notionDatabaseHint.classList.toggle('warn', !databaseOk);
   }
 
   /**
@@ -228,8 +224,8 @@ document.addEventListener('DOMContentLoaded', function() {
   function updateSetupProgress() {
     const databaseId = normalizeNotionDatabaseId(notionDatabaseInput.value);
     const step1 = isNotionTokenShaped(notionTokenInput.value.trim());
-    const step2 = Boolean(normalizeNotionDatabaseId(notionParentPageInput.value));
-    const step3 = Boolean(databaseId);
+    const step2 = Boolean(databaseId);
+    const step3 = Boolean(databaseId) && databaseId === preparedDatabaseId;
 
     setupStep1.classList.toggle('complete', step1);
     setupStep2.classList.toggle('complete', step2);
@@ -242,9 +238,7 @@ document.addEventListener('DOMContentLoaded', function() {
       setupDone.classList.add('hidden');
     }
 
-    // Step 2 is a manual action in Notion, so a user who already had a database
-    // can be finished without it — token plus database is what sync actually needs.
-    const configured = step1 && step3;
+    const configured = step1 && step2 && step3;
     if (configured) {
       setupBadge.textContent = 'Set up ✓';
     } else {
@@ -297,9 +291,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
 
-  async function handleCreateDatabase() {
+  async function handlePrepareDatabase() {
     const notionToken = notionTokenInput.value.trim();
-    const parentPageId = normalizeNotionDatabaseId(notionParentPageInput.value);
+    const databaseId = normalizeNotionDatabaseId(notionDatabaseInput.value);
 
     if (!notionToken) {
       showStatus('Paste your Notion access token in step 1 first', 'error');
@@ -307,72 +301,73 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
 
-    if (!parentPageId) {
-      showStatus('Paste the URL of the Notion page you added Canvas Sync to (step 2)', 'error');
-      notionParentPageInput.focus();
+    if (!databaseId) {
+      showStatus('Paste the URL of the Notion database you added Canvas Sync to (step 2)', 'error');
+      notionDatabaseInput.focus();
       return;
     }
 
     try {
-      setButtonLoading(createDatabaseBtn, 'Creating...');
+      setButtonLoading(prepareDatabaseBtn, 'Setting up...');
 
       const result = await chrome.runtime.sendMessage({
-        action: 'CREATE_NOTION_DATABASE',
+        action: 'PREPARE_NOTION_DATABASE',
         token: notionToken,
-        parentPageId: parentPageId
+        databaseId: databaseId
       });
 
-      if (result.success) {
-        notionDatabaseInput.value = result.databaseId;
-        savedDatabaseId = result.databaseId;
-        updateSetupProgress();
-
-        // Persist right away rather than waiting out the autosave debounce: the
-        // popup is about to be replaced by the new database's tab.
-        const saveResult = await chrome.runtime.sendMessage({
-          action: 'STORE_CREDENTIALS',
-          canvasToken: canvasTokenInput.value.trim() || null,
-          notionToken: notionToken,
-          notionDatabaseId: result.databaseId
-        });
-
-        if (!saveResult.success) {
-          showStatus('✅ Database created, but saving the configuration failed: ' + saveResult.error + '. Re-type the last character of a field to try saving again.', 'error');
-          openDatabaseTab(result.url, false);
-          return;
-        }
-
-        updateSyncStatus();
-
-        // Sync reads assignments out of an open Canvas tab. Without one it
-        // fails immediately, and redirecting would strand the user on an empty
-        // database with the popup closed and no explanation — so check first.
-        const canvasTabs = await chrome.tabs.query({ url: CANVAS_TAB_PATTERNS });
-
-        if (canvasTabs.length === 0) {
-          showStatus('✅ Database created and saved. Open a Canvas tab, then press "Sync Now" to fill it in.', 'info');
-          openDatabaseTab(result.url, false);
-          return;
-        }
-
-        // Order matters: focusing the new tab closes the popup, and a message
-        // sent after that point may never reach the service worker. Dispatch
-        // the sync first, then redirect so the rows appear as they land.
-        startBackgroundSync();
-        openDatabaseTab(result.url, true);
-      } else {
-        showStatus('❌ Could not create database: ' + result.error, 'error');
+      if (!result.success) {
+        showStatus('❌ ' + result.error, 'error');
+        return;
       }
+
+      // Persist right away rather than waiting out the autosave debounce: the
+      // popup is about to be replaced by the database's tab.
+      const saveResult = await chrome.runtime.sendMessage({
+        action: 'STORE_CREDENTIALS',
+        canvasToken: canvasTokenInput.value.trim() || null,
+        notionToken: notionToken,
+        notionDatabaseId: databaseId
+      });
+
+      if (!saveResult.success) {
+        showStatus('✅ Database set up, but saving the configuration failed: ' + saveResult.error + '. Re-type the last character of a field to try saving again.', 'error');
+        openDatabaseTab(result.url, false);
+        return;
+      }
+
+      savedDatabaseId = databaseId;
+      preparedDatabaseId = databaseId;
+      await chrome.storage.local.set({ preparedDatabaseId: databaseId });
+      updateSetupProgress();
+      updateSyncStatus();
+
+      // Sync reads assignments out of an open Canvas tab. Without one it
+      // fails immediately, and redirecting would strand the user on an empty
+      // database with the popup closed and no explanation — so check first.
+      const canvasTabs = await chrome.tabs.query({ url: CANVAS_TAB_PATTERNS });
+
+      if (canvasTabs.length === 0) {
+        showStatus(`✅ ${result.message} Open a Canvas tab, then press "Sync Now" to fill it in.`, 'info');
+        openDatabaseTab(result.url, false);
+        return;
+      }
+
+      // Order matters: focusing the database's tab closes the popup, and a
+      // message sent after that point may never reach the service worker.
+      // Dispatch the sync first, then redirect so the rows appear as they land.
+      startBackgroundSync();
+      openDatabaseTab(result.url, true);
     } catch (error) {
-      showStatus('❌ Could not create database: ' + error.message, 'error');
+      showStatus('❌ Could not set up that database: ' + error.message, 'error');
     } finally {
-      createDatabaseBtn.disabled = false;
-      createDatabaseBtn.textContent = 'Create Database';
+      prepareDatabaseBtn.disabled = false;
+      prepareDatabaseBtn.textContent = 'Set Up Database';
     }
   }
 
   /**
-   * Open the newly created database. `focus` is true when the user should land
+   * Open the configured database. `focus` is true when the user should land
    * on it to watch the sync populate it live; false when the sync isn't
    * running, so the popup survives to explain why.
    */
@@ -589,9 +584,9 @@ document.addEventListener('DOMContentLoaded', function() {
         canvasTokenInput.value = '';
         notionTokenInput.value = '';
         notionDatabaseInput.value = '';
-        notionParentPageInput.value = '';
         savedDatabaseId = '';
-        await chrome.storage.local.remove('setupParentPageUrl');
+        preparedDatabaseId = '';
+        await chrome.storage.local.remove('preparedDatabaseId');
         lastSyncElement.textContent = 'Never';
 
         showStatus('✅ All data cleared successfully!', 'success');
@@ -842,7 +837,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Settings inputs: reflect the change in the UI, then save it. Every field in
   // Settings is autosaved, so a half-finished setup survives the popup closing.
-  [canvasTokenInput, notionTokenInput, notionDatabaseInput, notionParentPageInput].forEach((field) => {
+  [canvasTokenInput, notionTokenInput, notionDatabaseInput].forEach((field) => {
     field.addEventListener('input', () => {
       updateFieldHints();
       updateSetupProgress();

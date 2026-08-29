@@ -48,7 +48,7 @@ First, create a Notion integration to allow the extension to access Notion on yo
 
 ### 2. Set Up Your Notion Database
 
-Your Notion database needs the following properties, with names matching exactly. Listed in the left-to-right order the **Create Database** button lays them out:
+Your Notion database needs the following properties, with names matching exactly. Listed in the left-to-right order the **Set Up Database** button lays them out:
 
 * **Checkbox** (Checkbox) — a "done" column the default view sorts by first. Ticked automatically when an assignment first reaches Graded, Submitted, or Pending Review; untick it by hand any time and sync will leave it alone.
 * **Course** (Select)
@@ -64,9 +64,11 @@ Your Notion database needs the following properties, with names matching exactly
 
 You can set this up two ways:
 
-**Option A — One click (recommended):** In the extension popup, click **Settings** and open the **Setup instructions** dropdown, then follow its three steps: paste your Notion access token, add the **Canvas Sync** connection to a Notion page ("..." menu → Connections → search for Canvas Sync → Add to page) and paste that page's URL, then click **Create Database**. Every box in Settings saves as you type, so you can close the popup part-way through and pick up where you left off. Clicking **Create Database** builds a new database with all of the columns above already configured — in the order shown, sorted by Checkbox, then Due Date, then Assignment Name — fills in the Database ID field, saves your configuration, starts your first sync, and switches you to the new database so you can watch the assignments land in it. Keep a Canvas tab open when you click it, since that's where assignments are read from; if you don't, the database is still created correctly and you can press **Sync Now** afterwards.
+**Option A — Let the extension do it (recommended):** Make a database anywhere in Notion, add the **Canvas Sync** connection to it ("..." menu → Connections → search for Canvas Sync → Add to page), and paste its URL into step 2 of the extension's setup instructions. Clicking **Set Up Database** in step 3 adds every column above that the database is missing, renames its title column to **Assignment Name**, and sorts its view by Checkbox, then Due Date, then Assignment Name. Columns you already have are left exactly as they are, and setup stops with an explanation rather than retyping a column of yours that holds a name it needs (a *status*-type `Status` column, for instance — rename or delete it and run setup again). It then saves your configuration, starts your first sync, and switches you to the database so you can watch the assignments land in it. Keep a Canvas tab open when you click it, since that's where assignments are read from; if you don't, the columns are still set up correctly and you can press **Sync Now** afterwards.
 
-**Option B — Manual:** Create the database yourself with the properties listed above, then open it in Notion, click "Share" → "Invite" → select your integration, and copy the database ID from the URL. Paste it into **Settings → Advanced → Notion database ID or URL**.
+Every box in Settings saves as you type, so you can close the popup part-way through setup and pick up where you left off.
+
+**Option B — Manual:** Add the properties listed above to the database yourself, then paste its URL into step 2. Sync only needs the access token and the database ID, so step 3 is optional if the columns already match.
 
 ### 3. Canvas Access (Optional)
 
@@ -85,7 +87,7 @@ If you prefer to use an API token instead, you can generate one from your Canvas
 Finally, input the information you've gathered into the extension's settings.
 
 1.  Click on the extension icon in your browser's toolbar.
-2.  Click **Settings**, open **Setup instructions**, and work through the three steps. Entries save automatically as you type — there is no Save button, and closing the popup keeps whatever you have entered so far.
+2.  Work through the three steps under **Setup instructions**. On a fresh install the popup opens straight to them; once sync is configured it opens collapsed, and **Settings** reopens it. Entries save automatically as you type — there is no Save button, and closing the popup keeps whatever you have entered so far.
 3.  Leave the Canvas access token (under **Advanced**) blank unless you specifically want to use one.
 4.  Under **Advanced**, the **Test Notion** and **Test Canvas** buttons verify that both connections are working.
 
