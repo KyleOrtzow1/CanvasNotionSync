@@ -76,3 +76,5 @@ generate-icons.bat
 # claude-ai files
 .claude/
 CLAUDE.md
+# Temp frames written by scripts/generate-store-assets.mjs
+.store-frame-*.html
