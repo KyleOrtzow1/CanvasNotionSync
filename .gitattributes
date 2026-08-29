@@ -1,0 +1,14 @@
+# Normalize line endings on commit, and let Git pick the working-tree ending.
+* text=auto
+
+# ...except shell scripts, which must keep LF everywhere.
+#
+# Git for Windows defaults to core.autocrlf=true, so without this a .sh file
+# stored with LF gets checked out with CRLF. Bash then reads line 2 of
+# scripts/build-zip.sh as `set -euo pipefail\r` and dies with
+# "set: pipefail: invalid option name" before the build starts.
+*.sh text eol=lf
+
+# Never touch binaries. The store PNGs are byte-for-byte reproducible output
+# from scripts/generate-store-assets.mjs; any munging would break that.
+*.png binary
