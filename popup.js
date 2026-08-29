@@ -321,8 +321,8 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
       }
 
-      // Persist right away rather than waiting out the autosave debounce: the
-      // popup is about to be replaced by the database's tab.
+      // Persist right away rather than waiting out the autosave debounce, so
+      // the sync below runs against saved credentials.
       const saveResult = await chrome.runtime.sendMessage({
         action: 'STORE_CREDENTIALS',
         canvasToken: canvasTokenInput.value.trim() || null,
@@ -332,7 +332,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
       if (!saveResult.success) {
         showStatus('✅ Database set up, but saving the configuration failed: ' + saveResult.error + '. Re-type the last character of a field to try saving again.', 'error');
-        openDatabaseTab(result.url, false);
         return;
       }
 
@@ -342,55 +341,27 @@ document.addEventListener('DOMContentLoaded', function() {
       updateSetupProgress();
       updateSyncStatus();
 
-      // Sync reads assignments out of an open Canvas tab. Without one it
-      // fails immediately, and redirecting would strand the user on an empty
-      // database with the popup closed and no explanation — so check first.
+      // Sync reads assignments out of an open Canvas tab; without one it fails
+      // immediately, so say what's missing rather than reporting a failure.
       const canvasTabs = await chrome.tabs.query({ url: CANVAS_TAB_PATTERNS });
 
       if (canvasTabs.length === 0) {
         showStatus(`✅ ${result.message} Open a Canvas tab, then press "Sync Now" to fill it in.`, 'info');
-        openDatabaseTab(result.url, false);
         return;
       }
 
-      // Order matters: focusing the database's tab closes the popup, and a
-      // message sent after that point may never reach the service worker.
-      // Dispatch the sync first, then redirect so the rows appear as they land.
-      startBackgroundSync();
-      openDatabaseTab(result.url, true);
+      // The user already has the database open in Notion — no tab to open, so
+      // the first sync runs right here with its progress on the Sync button.
+      showStatus(`✅ ${result.message} Syncing your assignments now…`, 'success');
+      prepareDatabaseBtn.disabled = false;
+      prepareDatabaseBtn.textContent = 'Set Up Database';
+      await handleManualSync();
     } catch (error) {
       showStatus('❌ Could not set up that database: ' + error.message, 'error');
     } finally {
       prepareDatabaseBtn.disabled = false;
       prepareDatabaseBtn.textContent = 'Set Up Database';
     }
-  }
-
-  /**
-   * Open the configured database. `focus` is true when the user should land
-   * on it to watch the sync populate it live; false when the sync isn't
-   * running, so the popup survives to explain why.
-   */
-  function openDatabaseTab(url, focus) {
-    if (url) {
-      chrome.tabs.create({ url: url, active: focus });
-    }
-  }
-
-  /**
-   * Kick off the first sync without waiting for it. The popup is about to be
-   * torn down by the tab switch, so there is nowhere for the result to land —
-   * the service worker carries the sync through on its own, and anything that
-   * goes wrong is recorded in Sync Logs.
-   */
-  function startBackgroundSync() {
-    // Canvas token is optional: same-origin requests fall back to the Canvas session cookie.
-    chrome.runtime.sendMessage({
-      action: 'START_BACKGROUND_SYNC',
-      canvasToken: canvasTokenInput.value.trim()
-    }).catch(() => {
-      // Expected: the popup closed before the response came back.
-    });
   }
 
   async function handleTestCanvasAPI() {
