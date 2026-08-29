@@ -10,7 +10,21 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 cd "$ROOT_DIR"
 
-VERSION=$(node -p "require('./package.json').version")
+# Read the version without requiring node on PATH. `npm run` on Windows may
+# hand this script to a bash that has no node (the WSL bash.exe in System32
+# rather than Git Bash), and which one wins should not decide whether the
+# build works. Prefer node when it is there, fall back to parsing the file.
+if command -v node >/dev/null 2>&1; then
+  VERSION=$(node -p "require('./package.json').version")
+else
+  VERSION=$(sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' package.json | head -1)
+fi
+
+if [ -z "$VERSION" ]; then
+  echo "Could not read \"version\" from package.json" >&2
+  exit 1
+fi
+
 OUT="canvas-notion-sync-v${VERSION}.zip"
 
 # Remove old build if it exists
