@@ -5,6 +5,8 @@ document.addEventListener('DOMContentLoaded', function() {
   const canvasTokenInput = document.getElementById('canvasToken');
   const notionTokenInput = document.getElementById('notionToken');
   const notionDatabaseInput = document.getElementById('notionDatabase');
+  const notionParentPageInput = document.getElementById('notionParentPage');
+  const createDatabaseBtn = document.getElementById('createDatabaseBtn');
   const saveBtn = document.getElementById('saveBtn');
   const testBtn = document.getElementById('testBtn');
   const testCanvasBtn = document.getElementById('testCanvasBtn');
@@ -34,6 +36,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // Event listeners
   saveBtn.addEventListener('click', handleSaveConfiguration);
   testBtn.addEventListener('click', handleTestConnection);
+  if (createDatabaseBtn) createDatabaseBtn.addEventListener('click', handleCreateDatabase);
   if (testCanvasBtn) testCanvasBtn.addEventListener('click', handleTestCanvasAPI);
   manualSyncBtn.addEventListener('click', handleManualSync);
   if (expandBtn) expandBtn.addEventListener('click', toggleSettings);
@@ -193,6 +196,105 @@ document.addEventListener('DOMContentLoaded', function() {
       testBtn.disabled = false;
       testBtn.textContent = 'Test Notion';
     }
+  }
+
+  async function handleCreateDatabase() {
+    const notionToken = notionTokenInput.value.trim();
+    const parentPageId = normalizeNotionDatabaseId(notionParentPageInput.value);
+
+    if (!notionToken) {
+      showStatus('Please enter your Notion Integration Token first', 'error');
+      notionTokenInput.focus();
+      return;
+    }
+
+    if (!parentPageId) {
+      showStatus('Paste the URL (or 32-character ID) of a Notion page you shared with your integration', 'error');
+      notionParentPageInput.focus();
+      return;
+    }
+
+    try {
+      setButtonLoading(createDatabaseBtn, 'Creating...');
+
+      const result = await chrome.runtime.sendMessage({
+        action: 'CREATE_NOTION_DATABASE',
+        token: notionToken,
+        parentPageId: parentPageId
+      });
+
+      if (result.success) {
+        notionDatabaseInput.value = result.databaseId;
+
+        // Persist right away — the token is already known-good (it just created
+        // the database), so don't make the user click Save separately to keep it.
+        const saveResult = await chrome.runtime.sendMessage({
+          action: 'STORE_CREDENTIALS',
+          canvasToken: canvasTokenInput.value.trim() || null,
+          notionToken: notionToken,
+          notionDatabaseId: result.databaseId
+        });
+
+        if (!saveResult.success) {
+          showStatus('✅ Database created, but saving the configuration failed: ' + saveResult.error + '. Click "Save Configuration" manually.', 'error');
+          openDatabaseTab(result.url, false);
+          return;
+        }
+
+        updateSyncStatus();
+
+        // Sync reads assignments out of an open Canvas tab. Without one it
+        // fails immediately, and redirecting would strand the user on an empty
+        // database with the popup closed and no explanation — so check first.
+        const canvasTabs = await chrome.tabs.query({ url: CANVAS_TAB_PATTERNS });
+
+        if (canvasTabs.length === 0) {
+          showStatus('✅ Database created and saved. Open a Canvas tab, then press "Sync Now" to fill it in.', 'info');
+          openDatabaseTab(result.url, false);
+          return;
+        }
+
+        // Order matters: focusing the new tab closes the popup, and a message
+        // sent after that point may never reach the service worker. Dispatch
+        // the sync first, then redirect so the rows appear as they land.
+        startBackgroundSync();
+        openDatabaseTab(result.url, true);
+      } else {
+        showStatus('❌ Could not create database: ' + result.error, 'error');
+      }
+    } catch (error) {
+      showStatus('❌ Could not create database: ' + error.message, 'error');
+    } finally {
+      createDatabaseBtn.disabled = false;
+      createDatabaseBtn.textContent = 'Create Database';
+    }
+  }
+
+  /**
+   * Open the newly created database. `focus` is true when the user should land
+   * on it to watch the sync populate it live; false when the sync isn't
+   * running, so the popup survives to explain why.
+   */
+  function openDatabaseTab(url, focus) {
+    if (url) {
+      chrome.tabs.create({ url: url, active: focus });
+    }
+  }
+
+  /**
+   * Kick off the first sync without waiting for it. The popup is about to be
+   * torn down by the tab switch, so there is nowhere for the result to land —
+   * the service worker carries the sync through on its own, and anything that
+   * goes wrong is recorded in Sync Logs.
+   */
+  function startBackgroundSync() {
+    // Canvas token is optional: same-origin requests fall back to the Canvas session cookie.
+    chrome.runtime.sendMessage({
+      action: 'START_BACKGROUND_SYNC',
+      canvasToken: canvasTokenInput.value.trim()
+    }).catch(() => {
+      // Expected: the popup closed before the response came back.
+    });
   }
 
   async function handleTestCanvasAPI() {

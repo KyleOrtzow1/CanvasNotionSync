@@ -123,6 +123,133 @@ export class NotionAPI {
     return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'createPage'));
   }
 
+  // Create a new database as a child of a page the integration can access
+  async createDatabase(parentPageId, title, properties) {
+    const requestFunction = async () => {
+      const response = await fetch(`${this.baseURL}/databases`, {
+        method: 'POST',
+        headers: this.headers,
+        body: JSON.stringify({
+          parent: { type: 'page_id', page_id: parentPageId },
+          title: [{ type: 'text', text: { content: title } }],
+          // Notion-Version 2025-09-03 splits databases from data sources: the schema
+          // goes under initial_data_source, not top-level `properties` (which that
+          // version silently ignores, creating a database with only a title column).
+          initial_data_source: { properties: properties }
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        const error = new Error(`Notion API error: ${response.status} - ${errorText}`);
+        error.status = response.status;
+
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After');
+          if (retryAfter) {
+            error.retryAfter = parseInt(retryAfter) * 1000;
+          }
+        }
+
+        throw error;
+      }
+
+      return await response.json();
+    };
+
+    return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'createDatabase'));
+  }
+
+  // Get a data source, including its property schema. Needed to resolve
+  // property names to the property IDs a view's configuration requires.
+  async getDataSource(dataSourceId) {
+    const requestFunction = async () => {
+      const response = await fetch(`${this.baseURL}/data_sources/${dataSourceId}`, {
+        method: 'GET',
+        headers: this.headers
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        const error = new Error(`Notion API error: ${response.status} - ${errorText}`);
+        error.status = response.status;
+
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After');
+          if (retryAfter) {
+            error.retryAfter = parseInt(retryAfter) * 1000;
+          }
+        }
+
+        throw error;
+      }
+
+      return await response.json();
+    };
+
+    return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'getDataSource'));
+  }
+
+  // List the views on a data source (used to find the default view Notion
+  // auto-creates alongside a new database, so it can be configured)
+  async listViews(dataSourceId) {
+    const requestFunction = async () => {
+      const response = await fetch(`${this.baseURL}/views?data_source_id=${dataSourceId}`, {
+        method: 'GET',
+        headers: this.headers
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        const error = new Error(`Notion API error: ${response.status} - ${errorText}`);
+        error.status = response.status;
+
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After');
+          if (retryAfter) {
+            error.retryAfter = parseInt(retryAfter) * 1000;
+          }
+        }
+
+        throw error;
+      }
+
+      return await response.json();
+    };
+
+    return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'listViews'));
+  }
+
+  // Update a view's sorts, filter, quick filters, name, or configuration
+  async updateView(viewId, updates) {
+    const requestFunction = async () => {
+      const response = await fetch(`${this.baseURL}/views/${viewId}`, {
+        method: 'PATCH',
+        headers: this.headers,
+        body: JSON.stringify(updates)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        const error = new Error(`Notion API error: ${response.status} - ${errorText}`);
+        error.status = response.status;
+
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After');
+          if (retryAfter) {
+            error.retryAfter = parseInt(retryAfter) * 1000;
+          }
+        }
+
+        throw error;
+      }
+
+      return await response.json();
+    };
+
+    return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'updateView'));
+  }
+
   // Get page by ID
   async getPage(pageId) {
     const requestFunction = async () => {

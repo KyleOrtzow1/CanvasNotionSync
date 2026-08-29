@@ -165,6 +165,128 @@ describe('NotionAPI.createPage', () => {
 });
 
 // ---------------------------------------------------------------------------
+// createDatabase
+// ---------------------------------------------------------------------------
+
+describe('NotionAPI.createDatabase', () => {
+  let api;
+
+  beforeEach(() => {
+    api = new NotionAPI('test-token');
+    globalThis.fetch = jest.fn();
+  });
+
+  test('returns created database on 200', async () => {
+    const payload = { id: 'new-db-id', url: 'https://notion.so/new-db-id', data_sources: [{ id: 'ds1' }] };
+    globalThis.fetch.mockResolvedValueOnce(makeResponse(payload));
+    const result = await api.createDatabase('page1', 'Canvas Assignments', { 'Assignment Name': { title: {} } });
+    expect(result.id).toBe('new-db-id');
+    expect(result.url).toBe('https://notion.so/new-db-id');
+  });
+
+  test('sends page_id parent, title, and properties under initial_data_source', async () => {
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ id: 'db1' }));
+    const properties = { 'Assignment Name': { title: {} }, 'Course': { select: {} } };
+    await api.createDatabase('parent-page-1', 'Canvas Assignments', properties);
+    const [url, opts] = globalThis.fetch.mock.calls[0];
+    expect(url).toBe('https://api.notion.com/v1/databases');
+    expect(opts.method).toBe('POST');
+    const body = JSON.parse(opts.body);
+    expect(body.parent).toEqual({ type: 'page_id', page_id: 'parent-page-1' });
+    expect(body.title).toEqual([{ type: 'text', text: { content: 'Canvas Assignments' } }]);
+    // Notion-Version 2025-09-03 ignores a top-level `properties` field entirely —
+    // the schema must be nested under initial_data_source or it's silently dropped.
+    expect(body.properties).toBeUndefined();
+    expect(body.initial_data_source).toEqual({ properties });
+  });
+
+  test('throws 404 when parent page is not shared with the integration', async () => {
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ message: 'not found' }, 404));
+    await expect(api.createDatabase('missing-page', 'Title', {})).rejects.toMatchObject({ status: 404 });
+  });
+
+  test('throws on 401 invalid token', async () => {
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ message: 'unauthorized' }, 401));
+    await expect(api.createDatabase('page1', 'Title', {})).rejects.toMatchObject({ status: 401 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// listViews / updateView
+// ---------------------------------------------------------------------------
+
+describe('NotionAPI.getDataSource', () => {
+  let api;
+
+  beforeEach(() => {
+    api = new NotionAPI('test-token');
+    globalThis.fetch = jest.fn();
+  });
+
+  test('returns the data source schema', async () => {
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({
+      id: 'ds1',
+      properties: { 'Assignment Name': { id: 'title', type: 'title' } }
+    }));
+    const result = await api.getDataSource('ds1');
+    expect(result.properties['Assignment Name'].id).toBe('title');
+    const [url] = globalThis.fetch.mock.calls[0];
+    expect(url).toBe('https://api.notion.com/v1/data_sources/ds1');
+  });
+
+  test('throws on 404', async () => {
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ message: 'not found' }, 404));
+    await expect(api.getDataSource('missing')).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe('NotionAPI.listViews', () => {
+  let api;
+
+  beforeEach(() => {
+    api = new NotionAPI('test-token');
+    globalThis.fetch = jest.fn();
+  });
+
+  test('requests views for the given data source', async () => {
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ results: [{ id: 'view1' }] }));
+    const result = await api.listViews('ds1');
+    expect(result.results[0].id).toBe('view1');
+    const [url] = globalThis.fetch.mock.calls[0];
+    expect(url).toBe('https://api.notion.com/v1/views?data_source_id=ds1');
+  });
+
+  test('throws on 404', async () => {
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ message: 'not found' }, 404));
+    await expect(api.listViews('missing-ds')).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe('NotionAPI.updateView', () => {
+  let api;
+
+  beforeEach(() => {
+    api = new NotionAPI('test-token');
+    globalThis.fetch = jest.fn();
+  });
+
+  test('sends a PATCH with the given updates', async () => {
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ id: 'view1', sorts: [] }));
+    const sorts = [{ property: 'Due Date', direction: 'ascending' }];
+    await api.updateView('view1', { sorts });
+    const [url, opts] = globalThis.fetch.mock.calls[0];
+    expect(url).toBe('https://api.notion.com/v1/views/view1');
+    expect(opts.method).toBe('PATCH');
+    expect(JSON.parse(opts.body)).toEqual({ sorts });
+  });
+
+  test('throws on 400 invalid sort property', async () => {
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ message: 'invalid property' }, 400));
+    await expect(api.updateView('view1', { sorts: [] })).rejects.toMatchObject({ status: 400 });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // updatePage
 // ---------------------------------------------------------------------------
 

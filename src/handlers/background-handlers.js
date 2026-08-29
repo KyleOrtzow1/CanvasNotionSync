@@ -1,5 +1,12 @@
 import { CredentialManager } from '../credentials/credential-manager.js';
 import { NotionAPI } from '../api/notion-api.js';
+import {
+  ASSIGNMENT_DATABASE_TITLE,
+  ASSIGNMENT_DATABASE_PROPERTIES,
+  ASSIGNMENT_DATABASE_DEFAULT_SORTS,
+  ASSIGNMENT_DATABASE_COLUMN_ORDER,
+  ASSIGNMENT_DATABASE_HIDDEN_COLUMNS
+} from '../utils/notion-database-template.js';
 import { AssignmentSyncer } from '../sync/assignment-syncer.js';
 import { AssignmentCacheManager } from '../cache/assignment-cache-manager.js';
 import '../utils/debug.js';
@@ -275,6 +282,88 @@ export async function testNotionConnection(token, databaseId) {
 
   } catch (error) {
     Debug.error('Connection test failed:', error.message);
+    const friendly = getUserFriendlyNotionError(error);
+    return { success: false, error: `${friendly.title}: ${friendly.message} ${friendly.action}` };
+  }
+}
+
+/**
+ * Build the table-view configuration that fixes left-to-right column order.
+ * A view's configuration addresses columns by property ID, not name, so the
+ * freshly created data source has to be read back to resolve them. Unknown
+ * names are skipped rather than failing the whole layout.
+ */
+async function buildDefaultViewConfiguration(notionAPI, dataSourceId) {
+  const dataSource = await notionAPI.getDataSource(dataSourceId);
+  const schema = dataSource.properties || {};
+
+  const toEntry = (name, visible) => {
+    const property = Object.prototype.hasOwnProperty.call(schema, name) ? schema[name] : null; // eslint-disable-line security/detect-object-injection -- key presence just verified via hasOwnProperty
+    return property ? { property_id: property.id, visible } : null;
+  };
+
+  const properties = [
+    ...ASSIGNMENT_DATABASE_COLUMN_ORDER.map(name => toEntry(name, true)),
+    ...ASSIGNMENT_DATABASE_HIDDEN_COLUMNS.map(name => toEntry(name, false))
+  ].filter(Boolean);
+
+  return { type: 'table', properties };
+}
+
+// Creates a ready-to-sync assignments database (with the exact columns
+// assignment-syncer.js writes to) as a child of a page the user has already
+// shared with their integration. Powers the "Create Database" popup button.
+export async function createNotionDatabase(token, parentPageId) {
+  try {
+    const notionAPI = new NotionAPI(token);
+    const database = await notionAPI.createDatabase(
+      parentPageId,
+      ASSIGNMENT_DATABASE_TITLE,
+      ASSIGNMENT_DATABASE_PROPERTIES
+    );
+
+    const dataSourceId = database.data_sources?.[0]?.id ?? null;
+
+    // Best-effort: sort and lay out the view Notion auto-creates. Not fatal if
+    // it fails — the database is already fully usable without it.
+    if (dataSourceId) {
+      try {
+        const views = await notionAPI.listViews(dataSourceId);
+        const defaultViewId = views.results?.[0]?.id;
+        if (defaultViewId) {
+          await notionAPI.updateView(defaultViewId, {
+            sorts: ASSIGNMENT_DATABASE_DEFAULT_SORTS,
+            configuration: await buildDefaultViewConfiguration(notionAPI, dataSourceId)
+          });
+        }
+      } catch (viewError) {
+        Debug.error('Could not configure default view:', viewError.message);
+        SyncLogger.warn(`Database created, but the default view could not be configured: ${viewError.message}`);
+      }
+    }
+
+    SyncLogger.info(`Created Notion database "${ASSIGNMENT_DATABASE_TITLE}"`, { databaseId: database.id });
+    await SyncLogger.flush();
+
+    return {
+      success: true,
+      databaseId: database.id,
+      dataSourceId,
+      url: database.url,
+      message: `Created "${ASSIGNMENT_DATABASE_TITLE}" with the columns needed for sync.`
+    };
+  } catch (error) {
+    Debug.error('Create database failed:', error.message);
+    SyncLogger.error(`Failed to create Notion database: ${error.message}`, { status: error.status });
+    await SyncLogger.flush();
+
+    if (error.status === 404) {
+      return {
+        success: false,
+        error: 'Notion Page Not Found: Could not find that page, or the integration cannot access it. Open the page in Notion, click "..." > "Connections", add your integration, then try again.'
+      };
+    }
+
     const friendly = getUserFriendlyNotionError(error);
     return { success: false, error: `${friendly.title}: ${friendly.message} ${friendly.action}` };
   }

@@ -10,6 +10,7 @@ A Chrome extension designed to automatically synchronize assignments from the Ca
 
 * **Automatic Synchronization**: Periodically syncs assignments in the background (every 30 minutes) while you are actively using Canvas.
 * **Comprehensive Data Sync**: Captures all essential assignment details, including course name, due dates, point values, grades, submission status, and descriptions.
+* **Auto-Check on Completion**: When an assignment first reaches Graded, Submitted, or Pending Review, the **Checkbox** column is ticked automatically. It fires only on that transition, so unticking a row by hand stays unticked. Skipped entirely on databases without a Checkbox column, so older setups are unaffected.
 * **Intelligent Field-Level Diffing**: Compares each assignment field-by-field against a unified cache, only calling the Notion API when data has actually changed. This reduces Notion API usage by 70-80%.
 * **Parallel Batch Processing**: Fetches assignments from multiple courses concurrently in batches, significantly reducing total sync time.
 * **Full Pagination Support**: Handles Canvas courses and assignments exceeding 100 items via Link header pagination, and Notion databases exceeding 100 pages via cursor pagination.
@@ -36,28 +37,36 @@ To install the extension from the source code, please follow these steps:
 
 Before you can begin syncing assignments, you will need to configure the extension to connect to your Notion and Canvas accounts.
 
-### 1. Notion Database Setup
+### 1. Create a Notion Integration
 
-First, prepare your Notion database by ensuring it includes the following properties. The names should match exactly to ensure a successful sync.
-
-* **Assignment Name** (Title)
-* **Course** (Select)
-* **Due Date** (Date)
-* **Status** (Select)
-* **Points** (Number)
-* **Link to Resources** (URL)
-* **Canvas ID** (Text)
-* **Grade** (number)
-
-### 2. Create a Notion Integration
-
-Next, you'll need to create a Notion integration to allow the extension to access your database.
+First, create a Notion integration to allow the extension to access Notion on your behalf.
 
 1.  Navigate to [notion.so/my-integrations](https://www.notion.so/my-integrations).
 2.  Click on "New integration".
 3.  Provide a name for your integration, such as "Canvas Sync".
 4.  Copy the **Internal Integration Token** that is generated. You will need this for the extension configuration.
-5.  Go to the "Access" tab for your new integration and add your assignments database.
+
+### 2. Set Up Your Notion Database
+
+Your Notion database needs the following properties, with names matching exactly. Listed in the left-to-right order the **Create Database** button lays them out:
+
+* **Checkbox** (Checkbox) — a "done" column the default view sorts by first. Ticked automatically when an assignment first reaches Graded, Submitted, or Pending Review; untick it by hand any time and sync will leave it alone.
+* **Course** (Select)
+* **Assignment Name** (Title)
+* **Status** (Select)
+* **Due Date** (Date)
+* **Link to Resources** (URL)
+* **Points** (Number)
+* **Notes** (Text) — not written to by sync; free space for your own notes
+* **Description** (Text) — optional, only needed if you want assignment descriptions synced
+* **Canvas ID** (Text)
+* **Grade** (Number) — synced, but hidden in the default view; unhide it in Notion any time
+
+You can set this up two ways:
+
+**Option A — One click (recommended):** In the extension popup, expand settings, paste your Notion Integration Token, then share any Notion page with your integration (open the page → "..." menu → Connections → add your integration) and paste that page's URL into the "Create Database" field. Clicking **Create Database** builds a new database with all of the columns above already configured — in the order shown, sorted by Checkbox, then Due Date, then Assignment Name — fills in the Database ID field, saves your configuration, starts your first sync, and switches you to the new database so you can watch the assignments land in it. Keep a Canvas tab open when you click it, since that's where assignments are read from; if you don't, the database is still created correctly and you can press **Sync Now** afterwards.
+
+**Option B — Manual:** Create the database yourself with the properties listed above, then open it in Notion, click "Share" → "Invite" → select your integration, and copy the database ID from the URL.
 
 ### 3. Canvas Access (Optional)
 
