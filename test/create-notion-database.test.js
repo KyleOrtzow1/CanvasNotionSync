@@ -1,5 +1,17 @@
 import { describe, test, expect, jest } from '@jest/globals';
 
+// background-handlers.js pulls in sync-logger.js, which calls chrome.storage.local
+// on flush() — provide a minimal mock so createNotionDatabase's logging doesn't throw.
+globalThis.chrome = {
+  storage: {
+    local: {
+      get: jest.fn(async () => ({})),
+      set: jest.fn(async () => {}),
+      remove: jest.fn(async () => {})
+    }
+  }
+};
+
 // ---------------------------------------------------------------------------
 // Mock NotionAPI before importing background-handlers.js (ES module mock)
 // ---------------------------------------------------------------------------
@@ -17,13 +29,15 @@ describe('createNotionDatabase', () => {
   test('returns success with the new database id and url', async () => {
     createDatabaseMock.mockResolvedValueOnce({
       id: 'new-db-id',
-      url: 'https://notion.so/new-db-id'
+      url: 'https://notion.so/new-db-id',
+      data_sources: [{ id: 'new-ds-id' }]
     });
 
     const result = await createNotionDatabase('test-token', 'parent-page-id');
 
     expect(result.success).toBe(true);
     expect(result.databaseId).toBe('new-db-id');
+    expect(result.dataSourceId).toBe('new-ds-id');
     expect(result.url).toBe('https://notion.so/new-db-id');
     expect(createDatabaseMock).toHaveBeenCalledWith(
       'parent-page-id',

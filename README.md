@@ -61,7 +61,7 @@ Your Notion database needs the following properties, with names matching exactly
 
 You can set this up two ways:
 
-**Option A — One click (recommended):** In the extension popup, expand settings, paste your Notion Integration Token, then share any Notion page with your integration (open the page → "..." menu → Connections → add your integration) and paste that page's URL into the "Create Database" field. Clicking **Create Database** builds a new database with all of the columns above already configured, and fills in the Database ID field for you.
+**Option A — One click (recommended):** In the extension popup, expand settings, paste your Notion Integration Token, then share any Notion page with your integration (open the page → "..." menu → Connections → add your integration) and paste that page's URL into the "Create Database" field. Clicking **Create Database** builds a new database with all of the columns above already configured, fills in the Database ID field, and saves your configuration automatically.
 
 **Option B — Manual:** Create the database yourself with the properties listed above, then open it in Notion, click "Share" → "Invite" → select your integration, and copy the database ID from the URL.
 

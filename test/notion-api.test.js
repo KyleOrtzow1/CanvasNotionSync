@@ -184,7 +184,7 @@ describe('NotionAPI.createDatabase', () => {
     expect(result.url).toBe('https://notion.so/new-db-id');
   });
 
-  test('sends page_id parent, title, and properties in body', async () => {
+  test('sends page_id parent, title, and properties under initial_data_source', async () => {
     globalThis.fetch.mockResolvedValueOnce(makeResponse({ id: 'db1' }));
     const properties = { 'Assignment Name': { title: {} }, 'Course': { select: {} } };
     await api.createDatabase('parent-page-1', 'Canvas Assignments', properties);
@@ -194,7 +194,10 @@ describe('NotionAPI.createDatabase', () => {
     const body = JSON.parse(opts.body);
     expect(body.parent).toEqual({ type: 'page_id', page_id: 'parent-page-1' });
     expect(body.title).toEqual([{ type: 'text', text: { content: 'Canvas Assignments' } }]);
-    expect(body.properties).toEqual(properties);
+    // Notion-Version 2025-09-03 ignores a top-level `properties` field entirely —
+    // the schema must be nested under initial_data_source or it's silently dropped.
+    expect(body.properties).toBeUndefined();
+    expect(body.initial_data_source).toEqual({ properties });
   });
 
   test('throws 404 when parent page is not shared with the integration', async () => {

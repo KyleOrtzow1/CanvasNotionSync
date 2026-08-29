@@ -225,7 +225,22 @@ document.addEventListener('DOMContentLoaded', function() {
 
       if (result.success) {
         notionDatabaseInput.value = result.databaseId;
-        showStatus('✅ Database created! The Database ID field above is filled in — click "Save Configuration" to finish.', 'success');
+
+        // Persist right away — the token is already known-good (it just created
+        // the database), so don't make the user click Save separately to keep it.
+        const saveResult = await chrome.runtime.sendMessage({
+          action: 'STORE_CREDENTIALS',
+          canvasToken: canvasTokenInput.value.trim() || null,
+          notionToken: notionToken,
+          notionDatabaseId: result.databaseId
+        });
+
+        if (saveResult.success) {
+          showStatus('✅ Database created and saved! You\'re ready to sync.', 'success');
+        } else {
+          showStatus('✅ Database created, but saving the configuration failed: ' + saveResult.error + '. Click "Save Configuration" manually.', 'error');
+        }
+
         if (result.url) {
           chrome.tabs.create({ url: result.url });
         }

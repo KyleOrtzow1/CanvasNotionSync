@@ -293,14 +293,20 @@ export async function createNotionDatabase(token, parentPageId) {
       ASSIGNMENT_DATABASE_PROPERTIES
     );
 
+    SyncLogger.info(`Created Notion database "${ASSIGNMENT_DATABASE_TITLE}"`, { databaseId: database.id });
+    await SyncLogger.flush();
+
     return {
       success: true,
       databaseId: database.id,
+      dataSourceId: database.data_sources?.[0]?.id ?? null,
       url: database.url,
       message: `Created "${ASSIGNMENT_DATABASE_TITLE}" with the columns needed for sync.`
     };
   } catch (error) {
     Debug.error('Create database failed:', error.message);
+    SyncLogger.error(`Failed to create Notion database: ${error.message}`, { status: error.status });
+    await SyncLogger.flush();
 
     if (error.status === 404) {
       return {

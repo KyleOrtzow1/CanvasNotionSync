@@ -132,7 +132,10 @@ export class NotionAPI {
         body: JSON.stringify({
           parent: { type: 'page_id', page_id: parentPageId },
           title: [{ type: 'text', text: { content: title } }],
-          properties: properties
+          // Notion-Version 2025-09-03 splits databases from data sources: the schema
+          // goes under initial_data_source, not top-level `properties` (which that
+          // version silently ignores, creating a database with only a title column).
+          initial_data_source: { properties: properties }
         })
       });
 
