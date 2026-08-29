@@ -4,9 +4,10 @@
 # ...except shell scripts, which must keep LF everywhere.
 #
 # Git for Windows defaults to core.autocrlf=true, so without this a .sh file
-# stored with LF gets checked out with CRLF. Bash then reads line 2 of
-# scripts/build-zip.sh as `set -euo pipefail\r` and dies with
-# "set: pipefail: invalid option name" before the build starts.
+# stored with LF gets checked out with CRLF, and bash rejects the trailing CR
+# on any line it parses as syntax. The repo currently has no .sh files - the
+# build moved to node for exactly this reason - so this rule guards whichever
+# one gets added next rather than anything here today.
 *.sh text eol=lf
 
 # Never touch binaries. The store PNGs are byte-for-byte reproducible output
