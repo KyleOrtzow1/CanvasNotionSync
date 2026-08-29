@@ -2,19 +2,25 @@ Canvas-Notion Assignment Sync automatically keeps your Notion database up to dat
 
 Key features:
 
+- No Canvas token needed — sync runs on your existing Canvas login, so it works even at schools that block students from creating access tokens (you can still supply a token if you prefer)
+- Guided three-step setup — the extension adds the columns sync needs to a database you already have, and every field saves as you type
 - Automatic syncing every 30 minutes, or sync manually with one click
-- Smart updates — only writes to Notion when assignment data has actually changed, minimizing API usage
-- Encrypted credentials — your Canvas and Notion API tokens are stored with AES-GCM 256-bit encryption
+- Smart updates — compares every assignment field-by-field and only writes to Notion when something actually changed, cutting Notion API calls by 70-80%
+- Auto-check on completion — when an assignment first reaches Graded, Submitted, or Pending Review, its checkbox is ticked for you; untick a row by hand and sync leaves it alone
 - Status preservation — manually set statuses like "In Progress" in Notion won't be overwritten unless Canvas reports forward progress (e.g., a grade)
 - Deletion detection — assignments removed from Canvas are automatically archived in Notion
-- Supports all Canvas instances (*.instructure.com)
+- Sync logs — a timestamped, colour-coded history of every sync, so you can see exactly what was created, updated, or archived
+- Encrypted credentials — your Notion access token (and Canvas token, if you use one) are stored with AES-GCM 256-bit encryption, on your computer only
+- Built to stay within limits — rate limiting for both Canvas and Notion, automatic retries with backoff, and storage monitoring with cleanup
+- Supports all Canvas instances (*.instructure.com and *.canvaslms.com)
 
 Getting started:
 
-1. Generate a Canvas API token: Canvas → Account → Settings → New Access Token
-2. Create a Notion integration named "Canvas Sync" at notion.so/my-integrations and copy its access token
-3. Make a database in Notion and add that connection to it ("..." menu -> Connections -> Canvas Sync -> Add to page)
-4. Open the extension popup and follow the three setup steps — it adds the columns sync needs, and entries save as you type
-5. Navigate to any Canvas page and click "Sync Now" — your assignments will appear in Notion
+1. Create a Notion integration named "Canvas Sync" at notion.so/my-integrations and copy its access token
+2. Make a database in Notion and add that connection to it ("..." menu → Connections → Canvas Sync → Add to page)
+3. Open the extension popup and follow the three setup steps — paste your access token, paste your database link, then open a Canvas tab and hit "Set Up Database"
+4. That adds the columns sync needs and runs your first sync — switch to your Notion tab to watch the assignments land
+
+After that it keeps itself up to date in the background, and "Sync Now" is there whenever you want it immediately.
 
 Built for students and educators who use both Canvas and Notion to stay organized.
