@@ -10,6 +10,7 @@ A Chrome extension designed to automatically synchronize assignments from the Ca
 
 * **Automatic Synchronization**: Periodically syncs assignments in the background (every 30 minutes) while you are actively using Canvas.
 * **Comprehensive Data Sync**: Captures all essential assignment details, including course name, due dates, point values, grades, submission status, and descriptions.
+* **Auto-Check on Completion**: When an assignment first reaches Graded, Submitted, or Pending Review, the **Checkbox** column is ticked automatically. It fires only on that transition, so unticking a row by hand stays unticked. Skipped entirely on databases without a Checkbox column, so older setups are unaffected.
 * **Intelligent Field-Level Diffing**: Compares each assignment field-by-field against a unified cache, only calling the Notion API when data has actually changed. This reduces Notion API usage by 70-80%.
 * **Parallel Batch Processing**: Fetches assignments from multiple courses concurrently in batches, significantly reducing total sync time.
 * **Full Pagination Support**: Handles Canvas courses and assignments exceeding 100 items via Link header pagination, and Notion databases exceeding 100 pages via cursor pagination.
@@ -49,7 +50,7 @@ First, create a Notion integration to allow the extension to access Notion on yo
 
 Your Notion database needs the following properties, with names matching exactly. Listed in the left-to-right order the **Create Database** button lays them out:
 
-* **Checkbox** (Checkbox) — not written to by sync; a manual "done" column the default view sorts by first
+* **Checkbox** (Checkbox) — a "done" column the default view sorts by first. Ticked automatically when an assignment first reaches Graded, Submitted, or Pending Review; untick it by hand any time and sync will leave it alone.
 * **Course** (Select)
 * **Assignment Name** (Title)
 * **Status** (Select)

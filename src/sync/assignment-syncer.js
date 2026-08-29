@@ -18,6 +18,28 @@ export const STATUS_RANK = {
   'Graded': 3
 };
 
+// Statuses that mean "this assignment is off your plate". Reaching any of them
+// ticks the manual Checkbox column, mirroring the Notion database automation
+// this template can't create through the API (Notion exposes no automations
+// endpoint — see README).
+export const COMPLETION_CHECKBOX_STATUSES = ['Graded', 'Submitted', 'Pending Review'];
+
+/**
+ * Whether a status change should tick the Checkbox column. Fires only on the
+ * transition *into* a completion status, never while already sitting in one —
+ * so manually unchecking a graded assignment stays unchecked instead of being
+ * re-ticked by every later sync. A missing/unknown existing status (a brand
+ * new page) counts as "not yet complete", so creation at a completion status
+ * ticks the box.
+ * @param {string|null|undefined} existingStatus - status currently in Notion
+ * @param {string|null|undefined} newStatus - status about to be written
+ * @returns {boolean}
+ */
+export function shouldTickCompletionCheckbox(existingStatus, newStatus) {
+  return COMPLETION_CHECKBOX_STATUSES.includes(newStatus) &&
+         !COMPLETION_CHECKBOX_STATUSES.includes(existingStatus);
+}
+
 /**
  * Decide which status should end up in Notion given the status currently
  * on the Notion page (existingStatus) and the status Canvas just reported
@@ -52,6 +74,10 @@ export class AssignmentSyncer {
     this.databaseId = databaseId;
     this.assignmentCache = assignmentCache;
     this.dataSourceId = null;
+    // Databases created before the Checkbox column existed (and hand-built
+    // ones) don't have it. Writing an unknown property is a 400 that fails the
+    // whole page write, so the column is only ever written when confirmed present.
+    this.hasCompletionCheckbox = false;
   }
 
   async initialize() {
@@ -66,11 +92,46 @@ export class AssignmentSyncer {
       // Use the first data source
       this.dataSourceId = database.data_sources[0].id;
 
+      this.hasCompletionCheckbox = await this.detectCompletionCheckbox();
 
       return { success: true, dataSourceId: this.dataSourceId };
     } catch (error) {
       Debug.error('Failed to initialize syncer:', error.message);
       throw error;
+    }
+  }
+
+  /**
+   * Report whether the target database actually has a `Checkbox` checkbox
+   * column. Any failure (older API client without getDataSource, a request
+   * error) is treated as "absent" so sync never risks writing a property the
+   * database doesn't have.
+   * @returns {Promise<boolean>}
+   */
+  async detectCompletionCheckbox() {
+    try {
+      if (typeof this.notionAPI.getDataSource !== 'function') return false;
+      const dataSource = await this.notionAPI.getDataSource(this.dataSourceId);
+      return dataSource?.properties?.Checkbox?.type === 'checkbox';
+    } catch (error) {
+      Debug.warn('Could not read database schema for Checkbox column:', error.message);
+      return false;
+    }
+  }
+
+  /**
+   * Tick the Checkbox column when `properties` carries a status that has just
+   * transitioned into a completion status. Mutates `properties` in place; a
+   * no-op when the database has no Checkbox column.
+   * @param {Object} properties - Notion properties about to be written
+   * @param {string|null|undefined} existingStatus - status currently in Notion
+   */
+  applyCompletionCheckbox(properties, existingStatus) {
+    if (!this.hasCompletionCheckbox) return;
+
+    const newStatus = properties.Status?.select?.name;
+    if (shouldTickCompletionCheckbox(existingStatus, newStatus)) {
+      properties.Checkbox = { checkbox: true };
     }
   }
 
@@ -387,6 +448,7 @@ export class AssignmentSyncer {
             });
           } else {
             // Genuinely new assignment - create in Notion
+            this.applyCompletionCheckbox(properties, null);
             const result = await this.notionAPI.createPage(this.dataSourceId, properties);
 
             if (this.assignmentCache) {
@@ -453,6 +515,7 @@ export class AssignmentSyncer {
                 });
               } else {
                 // No live page exists — create a new one
+                this.applyCompletionCheckbox(properties, null);
                 const result = await this.notionAPI.createPage(this.dataSourceId, properties);
 
                 if (this.assignmentCache) {
@@ -486,9 +549,9 @@ export class AssignmentSyncer {
 
             if (preserved !== truthEntry.status) {
               try {
-                await this.notionAPI.updatePage(notionPageId, {
-                  Status: { select: { name: preserved } }
-                });
+                const correction = { Status: { select: { name: preserved } } };
+                this.applyCompletionCheckbox(correction, truthEntry.status);
+                await this.notionAPI.updatePage(notionPageId, correction);
 
                 SyncLogger.info(
                   `Corrected regressed status for "${assignment.title}" (Notion: ${truthEntry.status} -> ${preserved})`,
@@ -602,6 +665,10 @@ export class AssignmentSyncer {
           properties.Status = { select: { name: preserved } };
         }
       }
+
+      // Uses the status that actually ends up in `properties` above, so a
+      // preserved manual status is what decides the checkbox.
+      this.applyCompletionCheckbox(properties, existingStatus);
     } catch (error) {
       // If we can't fetch the current page, just use the new status
       Debug.warn(`Could not fetch existing status for status preservation:`, error.message);
