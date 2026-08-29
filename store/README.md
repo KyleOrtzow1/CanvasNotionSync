@@ -11,7 +11,14 @@ Everything the store listing needs, and the script that produces it.
 
 ## Regenerating the images
 
+The script drives a real browser, so it needs Playwright. Playwright is
+deliberately **not** a devDependency — CI runs `npm ci` on three jobs and the
+package downloads a browser on install, which is a lot of machinery for
+something run by hand when the popup changes. Install it for the run:
+
 ```bash
+npm install --no-save playwright
+npx playwright install chromium
 npm run assets:store
 ```
 
@@ -24,12 +31,15 @@ were removed.
 
 **Re-run this script whenever the popup changes**, and re-upload the images.
 
-If the environment's Chromium predates the installed Playwright build, point the
-script at it:
+If you already have a Chromium, or the environment's browser predates the
+installed Playwright build, point the script at it instead of downloading one:
 
 ```bash
 CHROMIUM_PATH=/path/to/chrome npm run assets:store
 ```
+
+Running the script without Playwright installed prints these instructions
+rather than a stack trace.
 
 ## What each screenshot shows
 

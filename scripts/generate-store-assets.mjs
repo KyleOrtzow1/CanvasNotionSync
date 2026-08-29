@@ -11,7 +11,6 @@
  * Usage: node scripts/generate-store-assets.mjs
  */
 
-import { chromium } from 'playwright';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdir, writeFile, rm } from 'node:fs/promises';
@@ -371,13 +370,34 @@ async function staticShot(browser, { html, w, h, path }) {
 
 // ---------------------------------------------------------------------------
 
+/**
+ * Playwright is deliberately NOT a devDependency: CI runs `npm ci` on three
+ * jobs and the package downloads a browser on install, which is a lot of
+ * machinery for a script that is run by hand when the popup changes.
+ */
+async function loadChromium() {
+  try {
+    return (await import('playwright')).chromium;
+  } catch {
+    console.error(
+      'This script needs Playwright, which is not a dependency of this repo.\n' +
+      'Install it just for this run:\n\n' +
+      '  npm install --no-save playwright\n' +
+      '  npx playwright install chromium\n\n' +
+      'If you already have a Chromium, point at it instead:\n\n' +
+      '  CHROMIUM_PATH=/path/to/chrome npm run assets:store\n'
+    );
+    process.exit(1);
+  }
+}
+
 async function main() {
   await mkdir(SHOTS, { recursive: true });
   await mkdir(PROMO, { recursive: true });
 
   // The environment may ship a Chromium that predates the installed Playwright
   // build, so prefer an explicitly provided binary over the bundled lookup.
-  const browser = await chromium.launch({
+  const browser = await (await loadChromium()).launch({
     // Both the frame and popup.html are file:// documents; without this Chromium
     // gives each an opaque origin, contentDocument reads back null, and the
     // popup can neither be waited on nor driven into a particular state.
