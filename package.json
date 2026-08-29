@@ -8,7 +8,7 @@
     "test:integration-rate": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.integration-rate.config.js --runTestsByPath test/integration/notion-rate-limiter.integration.test.js --runInBand",
     "lint": "eslint . --ext .js --config .eslintrc.security.json --ignore-pattern '.github/'",
     "check:security": "node .github/scripts/check-manifest-security.cjs",
-    "build:zip": "bash scripts/build-zip.sh",
+    "build:zip": "node scripts/build-zip.mjs",
     "assets:store": "node scripts/generate-store-assets.mjs"
   },
   "keywords": [
