@@ -95,9 +95,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
       updateFieldHints();
 
-      // Someone still mid-setup should land on the instructions; once sync is
-      // configured the dropdown starts collapsed and stays out of the way.
+      // Someone still mid-setup should land straight on the instructions, with
+      // no clicks in between: both Settings and the setup steps open on their
+      // own. Once sync is configured they stay closed and out of the way.
       if (!updateSetupProgress()) {
+        setSettingsOpen(true);
         openAccordion(setupToggle, setupBody);
       }
 
@@ -561,16 +563,13 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
 
+  function setSettingsOpen(open) {
+    settingsSection.classList.toggle('hidden', !open);
+    expandBtn.textContent = open ? '▲ Hide Settings' : '⚙️ Settings';
+  }
+
   function toggleSettings() {
-    const isHidden = settingsSection.classList.contains('hidden');
-    
-    if (isHidden) {
-      settingsSection.classList.remove('hidden');
-      expandBtn.textContent = '▲ Hide Settings';
-    } else {
-      settingsSection.classList.add('hidden');
-      expandBtn.textContent = '⚙️ Settings';
-    }
+    setSettingsOpen(settingsSection.classList.contains('hidden'));
   }
 
   async function handleClearAllData() {
