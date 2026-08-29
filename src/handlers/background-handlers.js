@@ -1,6 +1,6 @@
 import { CredentialManager } from '../credentials/credential-manager.js';
 import { NotionAPI } from '../api/notion-api.js';
-import { ASSIGNMENT_DATABASE_TITLE, ASSIGNMENT_DATABASE_PROPERTIES } from '../utils/notion-database-template.js';
+import { ASSIGNMENT_DATABASE_TITLE, ASSIGNMENT_DATABASE_PROPERTIES, ASSIGNMENT_DATABASE_DEFAULT_SORTS } from '../utils/notion-database-template.js';
 import { AssignmentSyncer } from '../sync/assignment-syncer.js';
 import { AssignmentCacheManager } from '../cache/assignment-cache-manager.js';
 import '../utils/debug.js';
@@ -293,13 +293,30 @@ export async function createNotionDatabase(token, parentPageId) {
       ASSIGNMENT_DATABASE_PROPERTIES
     );
 
+    const dataSourceId = database.data_sources?.[0]?.id ?? null;
+
+    // Best-effort: set a sensible default sort on the view Notion auto-creates.
+    // Not fatal if it fails — the database is already fully usable without it.
+    if (dataSourceId) {
+      try {
+        const views = await notionAPI.listViews(dataSourceId);
+        const defaultViewId = views.results?.[0]?.id;
+        if (defaultViewId) {
+          await notionAPI.updateView(defaultViewId, { sorts: ASSIGNMENT_DATABASE_DEFAULT_SORTS });
+        }
+      } catch (viewError) {
+        Debug.error('Could not set default view sort:', viewError.message);
+        SyncLogger.warn(`Database created, but default sort could not be applied: ${viewError.message}`);
+      }
+    }
+
     SyncLogger.info(`Created Notion database "${ASSIGNMENT_DATABASE_TITLE}"`, { databaseId: database.id });
     await SyncLogger.flush();
 
     return {
       success: true,
       databaseId: database.id,
-      dataSourceId: database.data_sources?.[0]?.id ?? null,
+      dataSourceId,
       url: database.url,
       message: `Created "${ASSIGNMENT_DATABASE_TITLE}" with the columns needed for sync.`
     };

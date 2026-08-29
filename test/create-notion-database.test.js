@@ -1,4 +1,4 @@
-import { describe, test, expect, jest } from '@jest/globals';
+import { describe, test, expect, jest, beforeEach } from '@jest/globals';
 
 // background-handlers.js pulls in sync-logger.js, which calls chrome.storage.local
 // on flush() — provide a minimal mock so createNotionDatabase's logging doesn't throw.
@@ -16,16 +16,25 @@ globalThis.chrome = {
 // Mock NotionAPI before importing background-handlers.js (ES module mock)
 // ---------------------------------------------------------------------------
 const createDatabaseMock = jest.fn();
+const listViewsMock = jest.fn();
+const updateViewMock = jest.fn();
 
 await jest.unstable_mockModule('../src/api/notion-api.js', () => ({
   NotionAPI: jest.fn().mockImplementation(() => ({
-    createDatabase: createDatabaseMock
+    createDatabase: createDatabaseMock,
+    listViews: listViewsMock,
+    updateView: updateViewMock
   }))
 }));
 
 const { createNotionDatabase } = await import('../src/handlers/background-handlers.js');
 
 describe('createNotionDatabase', () => {
+  beforeEach(() => {
+    listViewsMock.mockReset().mockResolvedValue({ results: [{ id: 'default-view-id' }] });
+    updateViewMock.mockReset().mockResolvedValue({ id: 'default-view-id' });
+  });
+
   test('returns success with the new database id and url', async () => {
     createDatabaseMock.mockResolvedValueOnce({
       id: 'new-db-id',
@@ -53,6 +62,38 @@ describe('createNotionDatabase', () => {
         'Grade': expect.any(Object)
       })
     );
+  });
+
+  test('applies the default sort to the auto-created view', async () => {
+    createDatabaseMock.mockResolvedValueOnce({
+      id: 'new-db-id',
+      url: 'https://notion.so/new-db-id',
+      data_sources: [{ id: 'new-ds-id' }]
+    });
+
+    await createNotionDatabase('test-token', 'parent-page-id');
+
+    expect(listViewsMock).toHaveBeenCalledWith('new-ds-id');
+    expect(updateViewMock).toHaveBeenCalledWith('default-view-id', {
+      sorts: [
+        { property: 'Due Date', direction: 'ascending' },
+        { property: 'Assignment Name', direction: 'ascending' }
+      ]
+    });
+  });
+
+  test('still succeeds if setting the default sort fails', async () => {
+    createDatabaseMock.mockResolvedValueOnce({
+      id: 'new-db-id',
+      url: 'https://notion.so/new-db-id',
+      data_sources: [{ id: 'new-ds-id' }]
+    });
+    listViewsMock.mockRejectedValueOnce(new Error('views API unavailable'));
+
+    const result = await createNotionDatabase('test-token', 'parent-page-id');
+
+    expect(result.success).toBe(true);
+    expect(result.databaseId).toBe('new-db-id');
   });
 
   test('returns a page-specific message on 404 (page not shared with integration)', async () => {

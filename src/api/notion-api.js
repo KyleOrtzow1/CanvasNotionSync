@@ -160,6 +160,66 @@ export class NotionAPI {
     return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'createDatabase'));
   }
 
+  // List the views on a data source (used to find the default view Notion
+  // auto-creates alongside a new database, so it can be configured)
+  async listViews(dataSourceId) {
+    const requestFunction = async () => {
+      const response = await fetch(`${this.baseURL}/views?data_source_id=${dataSourceId}`, {
+        method: 'GET',
+        headers: this.headers
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        const error = new Error(`Notion API error: ${response.status} - ${errorText}`);
+        error.status = response.status;
+
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After');
+          if (retryAfter) {
+            error.retryAfter = parseInt(retryAfter) * 1000;
+          }
+        }
+
+        throw error;
+      }
+
+      return await response.json();
+    };
+
+    return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'listViews'));
+  }
+
+  // Update a view's sorts, filter, quick filters, name, or configuration
+  async updateView(viewId, updates) {
+    const requestFunction = async () => {
+      const response = await fetch(`${this.baseURL}/views/${viewId}`, {
+        method: 'PATCH',
+        headers: this.headers,
+        body: JSON.stringify(updates)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        const error = new Error(`Notion API error: ${response.status} - ${errorText}`);
+        error.status = response.status;
+
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After');
+          if (retryAfter) {
+            error.retryAfter = parseInt(retryAfter) * 1000;
+          }
+        }
+
+        throw error;
+      }
+
+      return await response.json();
+    };
+
+    return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'updateView'));
+  }
+
   // Get page by ID
   async getPage(pageId) {
     const requestFunction = async () => {

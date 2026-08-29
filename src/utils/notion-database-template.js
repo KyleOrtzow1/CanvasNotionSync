@@ -26,3 +26,12 @@ export const ASSIGNMENT_DATABASE_PROPERTIES = {
   'Grade': { number: { format: 'number' } },
   'Description': { rich_text: {} }
 };
+
+// Default view sort applied to a freshly created database: soonest due first,
+// then alphabetical as a tiebreak. Deliberately excludes anything workspace- or
+// user-specific (e.g. a filter limited to particular course codes) since this
+// template is shared by every install of the extension.
+export const ASSIGNMENT_DATABASE_DEFAULT_SORTS = [
+  { property: 'Due Date', direction: 'ascending' },
+  { property: 'Assignment Name', direction: 'ascending' }
+];

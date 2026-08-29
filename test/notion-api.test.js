@@ -212,6 +212,56 @@ describe('NotionAPI.createDatabase', () => {
 });
 
 // ---------------------------------------------------------------------------
+// listViews / updateView
+// ---------------------------------------------------------------------------
+
+describe('NotionAPI.listViews', () => {
+  let api;
+
+  beforeEach(() => {
+    api = new NotionAPI('test-token');
+    globalThis.fetch = jest.fn();
+  });
+
+  test('requests views for the given data source', async () => {
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ results: [{ id: 'view1' }] }));
+    const result = await api.listViews('ds1');
+    expect(result.results[0].id).toBe('view1');
+    const [url] = globalThis.fetch.mock.calls[0];
+    expect(url).toBe('https://api.notion.com/v1/views?data_source_id=ds1');
+  });
+
+  test('throws on 404', async () => {
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ message: 'not found' }, 404));
+    await expect(api.listViews('missing-ds')).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe('NotionAPI.updateView', () => {
+  let api;
+
+  beforeEach(() => {
+    api = new NotionAPI('test-token');
+    globalThis.fetch = jest.fn();
+  });
+
+  test('sends a PATCH with the given updates', async () => {
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ id: 'view1', sorts: [] }));
+    const sorts = [{ property: 'Due Date', direction: 'ascending' }];
+    await api.updateView('view1', { sorts });
+    const [url, opts] = globalThis.fetch.mock.calls[0];
+    expect(url).toBe('https://api.notion.com/v1/views/view1');
+    expect(opts.method).toBe('PATCH');
+    expect(JSON.parse(opts.body)).toEqual({ sorts });
+  });
+
+  test('throws on 400 invalid sort property', async () => {
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ message: 'invalid property' }, 400));
+    await expect(api.updateView('view1', { sorts: [] })).rejects.toMatchObject({ status: 400 });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // updatePage
 // ---------------------------------------------------------------------------
 
