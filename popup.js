@@ -237,25 +237,28 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (!saveResult.success) {
           showStatus('✅ Database created, but saving the configuration failed: ' + saveResult.error + '. Click "Save Configuration" manually.', 'error');
-          openDatabaseTab(result.url);
+          openDatabaseTab(result.url, false);
           return;
         }
 
         updateSyncStatus();
 
-        // Populate the new database straight away, so it isn't empty when the
-        // user lands on it.
-        const firstSync = await runInitialSync();
+        // Sync reads assignments out of an open Canvas tab. Without one it
+        // fails immediately, and redirecting would strand the user on an empty
+        // database with the popup closed and no explanation — so check first.
+        const canvasTabs = await chrome.tabs.query({ url: CANVAS_TAB_PATTERNS });
 
-        if (firstSync.ok) {
-          showStatus(`✅ Database created and ${firstSync.count} assignments synced! Opened in a new tab.`, 'success');
-        } else {
-          // The database itself is fine — only the sync didn't run. Say so
-          // plainly rather than making it look like setup failed.
-          showStatus(`✅ Database created and saved. First sync didn't run: ${firstSync.error} You can hit "Sync Now" once that's sorted.`, 'info');
+        if (canvasTabs.length === 0) {
+          showStatus('✅ Database created and saved. Open a Canvas tab, then press "Sync Now" to fill it in.', 'info');
+          openDatabaseTab(result.url, false);
+          return;
         }
 
-        openDatabaseTab(result.url);
+        // Order matters: focusing the new tab closes the popup, and a message
+        // sent after that point may never reach the service worker. Dispatch
+        // the sync first, then redirect so the rows appear as they land.
+        startBackgroundSync();
+        openDatabaseTab(result.url, true);
       } else {
         showStatus('❌ Could not create database: ' + result.error, 'error');
       }
@@ -267,47 +270,31 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
 
-  // Opened inactive on purpose: focusing a new tab closes the popup, which
-  // would hide the sync result the user just waited for.
-  function openDatabaseTab(url) {
+  /**
+   * Open the newly created database. `focus` is true when the user should land
+   * on it to watch the sync populate it live; false when the sync isn't
+   * running, so the popup survives to explain why.
+   */
+  function openDatabaseTab(url, focus) {
     if (url) {
-      chrome.tabs.create({ url: url, active: false });
+      chrome.tabs.create({ url: url, active: focus });
     }
   }
 
   /**
-   * Run the first sync right after the database is created, reusing the Sync
-   * Now button's progress bar. Never throws — a failure here (most often no
-   * Canvas tab open) leaves a perfectly good database behind, so the caller
-   * reports it as a partial success rather than an error.
-   * @returns {Promise<{ok: boolean, count?: number, error?: string}>}
+   * Kick off the first sync without waiting for it. The popup is about to be
+   * torn down by the tab switch, so there is nowhere for the result to land —
+   * the service worker carries the sync through on its own, and anything that
+   * goes wrong is recorded in Sync Logs.
    */
-  async function runInitialSync() {
-    try {
-      manualSyncBtn.disabled = true;
-      updateSyncProgress('starting', 0, 'Syncing assignments...');
-
-      // Canvas token is optional: same-origin requests fall back to the Canvas session cookie.
-      const syncResult = await chrome.runtime.sendMessage({
-        action: 'START_BACKGROUND_SYNC',
-        canvasToken: canvasTokenInput.value.trim()
-      });
-
-      if (!syncResult.success) {
-        return { ok: false, error: syncResult.error };
-      }
-
-      const count = syncResult.assignmentCount || 0;
-      updateSyncProgress('complete', 100, `Synced ${count} assignments!`);
-      lastSyncElement.textContent = formatDate(new Date());
-      await loadStorageQuota();
-      loadErrorStats();
-      return { ok: true, count };
-    } catch (error) {
-      return { ok: false, error: error.message };
-    } finally {
-      resetSyncButton();
-    }
+  function startBackgroundSync() {
+    // Canvas token is optional: same-origin requests fall back to the Canvas session cookie.
+    chrome.runtime.sendMessage({
+      action: 'START_BACKGROUND_SYNC',
+      canvasToken: canvasTokenInput.value.trim()
+    }).catch(() => {
+      // Expected: the popup closed before the response came back.
+    });
   }
 
   async function handleTestCanvasAPI() {
