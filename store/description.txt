@@ -1,26 +1,54 @@
-Canvas-Notion Assignment Sync automatically keeps your Notion database up to date with assignments from Canvas LMS. Once configured, the extension runs in the background and syncs your courses, due dates, grades, and submission statuses — so you can manage everything in Notion without manual copy-paste.
+Your assignments, already in Notion. All of them, always up to date.
 
-Key features:
+If you plan your life in Notion but your coursework lives in Canvas, you end up copying due dates by hand — and copying them again every time a professor moves a deadline. This extension does that for you, quietly, in the background.
 
-- No Canvas token needed — sync runs on your existing Canvas login, so it works even at schools that block students from creating access tokens (you can still supply a token if you prefer)
-- Guided three-step setup — the extension adds the columns sync needs to a database you already have, and every field saves as you type
-- Automatic syncing every 30 minutes, or sync manually with one click
-- Smart updates — compares every assignment field-by-field and only writes to Notion when something actually changed, cutting Notion API calls by 70-80%
-- Auto-check on completion — when an assignment first reaches Graded, Submitted, or Pending Review, its checkbox is ticked for you; untick a row by hand and sync leaves it alone
-- Status preservation — manually set statuses like "In Progress" in Notion won't be overwritten unless Canvas reports forward progress (e.g., a grade)
-- Deletion detection — assignments removed from Canvas are automatically archived in Notion
-- Sync logs — a timestamped, colour-coded history of every sync, so you can see exactly what was created, updated, or archived
-- Encrypted credentials — your Notion access token (and Canvas token, if you use one) are stored with AES-GCM 256-bit encryption, on your computer only
-- Built to stay within limits — rate limiting for both Canvas and Notion, automatic retries with backoff, and storage monitoring with cleanup
-- Supports all Canvas instances (*.instructure.com and *.canvaslms.com)
+Connect it once and your Notion database fills with every assignment from every course: due dates, points, grades, submission status, and a link straight back to the Canvas page. It refreshes itself every half hour, so what you see in Notion is what's actually due.
 
-Getting started:
 
-1. Create a Notion integration named "Canvas Sync" at notion.so/my-integrations and copy its access token
-2. Make a database in Notion and add that connection to it ("..." menu → Connections → Canvas Sync → Add to page)
-3. Open the extension popup and follow the three setup steps — paste your access token, paste your database link, then open a Canvas tab and hit "Set Up Database"
-4. That adds the columns sync needs and runs your first sync — switch to your Notion tab to watch the assignments land
+WHAT YOU GET
 
-After that it keeps itself up to date in the background, and "Sync Now" is there whenever you want it immediately.
+A to-do list that sorts itself
+Assignments arrive ordered the way you'd actually want them — unfinished work first, soonest deadline at the top. Open Notion in the morning and the next thing due is the first thing you see.
 
-Built for students and educators who use both Canvas and Notion to stay organized.
+Checkboxes that tick themselves
+Turn something in, and its checkbox gets ticked on the next sync. Prefer to track it yourself? Untick it and the extension takes the hint, leaving that one to you.
+
+Your own planning stays yours
+Mark something "In Progress" in Notion and it stays "In Progress." Your notes, your edits, and any columns you add are never steamrolled — a status only moves forward when Canvas says something really happened, like a grade landing.
+
+No Canvas token to hunt down
+Most sync tools make you generate an API token first, and plenty of schools disable that entirely. This one uses the Canvas login you already have. Open a Canvas tab and it works. (You can still supply a token if you'd rather.)
+
+Deleted assignments don't linger
+When something disappears from Canvas, it gets archived in Notion instead of haunting your list for the rest of the semester.
+
+Everything in one row
+Course, assignment name, status, due date, points, grade, description, and a direct link to the Canvas page — plus a Notes column that's entirely yours.
+
+See exactly what happened
+A plain-language history of every sync shows what was added, updated, or archived, so you're never left wondering whether it ran.
+
+
+SETTING IT UP
+
+About five minutes, once:
+
+1. Create a free Notion integration at notion.so/my-integrations and copy its token
+2. Make a database in Notion and connect it to that integration
+3. Paste the token and your database link into the extension, then click "Set Up Database"
+
+The extension builds the columns for you and runs your first sync while you watch. After that it keeps itself current on its own — and "Sync Now" is there for the moments you want an answer immediately.
+
+
+YOUR DATA STAYS YOURS
+
+Everything runs on your own computer. Your credentials are encrypted and stored locally. There's no account to create, no server in the middle, and nothing is sent anywhere except directly to Canvas and Notion.
+
+
+BEFORE YOU INSTALL
+
+This works with Canvas schools whose site address ends in instructure.com or canvaslms.com — that's most of them. Check the address bar when you're logged into Canvas; if your school uses its own custom domain instead, this extension won't be able to reach it yet.
+
+Free and open source.
+
+Built for students who'd rather spend their time doing the work than tracking it.
