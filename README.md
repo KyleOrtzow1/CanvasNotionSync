@@ -42,13 +42,13 @@ Before you can begin syncing assignments, you will need to configure the extensi
 First, create a Notion integration to allow the extension to access Notion on your behalf.
 
 1.  Navigate to [notion.so/my-integrations](https://www.notion.so/my-integrations).
-2.  Click on "New integration".
-3.  Provide a name for your integration, such as "Canvas Sync".
-4.  Copy the **Internal Integration Token** that is generated. You will need this for the extension configuration.
+2.  Click **New connection**.
+3.  Name it **Canvas Sync**. Use that exact name — the setup steps in the extension tell you to search for it later.
+4.  Copy the **Access token** that is generated (it starts with `ntn_`). You will paste this into the extension.
 
 ### 2. Set Up Your Notion Database
 
-Your Notion database needs the following properties, with names matching exactly. Listed in the left-to-right order the **Create Database** button lays them out:
+Your Notion database needs the following properties, with names matching exactly. Listed in the left-to-right order the **Set Up Database** button lays them out:
 
 * **Checkbox** (Checkbox) — a "done" column the default view sorts by first. Ticked automatically when an assignment first reaches Graded, Submitted, or Pending Review; untick it by hand any time and sync will leave it alone.
 * **Course** (Select)
@@ -64,9 +64,11 @@ Your Notion database needs the following properties, with names matching exactly
 
 You can set this up two ways:
 
-**Option A — One click (recommended):** In the extension popup, expand settings, paste your Notion Integration Token, then share any Notion page with your integration (open the page → "..." menu → Connections → add your integration) and paste that page's URL into the "Create Database" field. Clicking **Create Database** builds a new database with all of the columns above already configured — in the order shown, sorted by Checkbox, then Due Date, then Assignment Name — fills in the Database ID field, saves your configuration, starts your first sync, and switches you to the new database so you can watch the assignments land in it. Keep a Canvas tab open when you click it, since that's where assignments are read from; if you don't, the database is still created correctly and you can press **Sync Now** afterwards.
+**Option A — Let the extension do it (recommended):** Make a database anywhere in Notion, add the **Canvas Sync** connection to it ("..." menu → Connections → search for Canvas Sync → Add to page), and paste its URL into step 2 of the extension's setup instructions. Clicking **Set Up Database** in step 3 adds every column above that the database is missing, renames its title column to **Assignment Name**, and sorts its view by Checkbox, then Due Date, then Assignment Name. Columns you already have are left exactly as they are, and setup stops with an explanation rather than retyping a column of yours that holds a name it needs (a *status*-type `Status` column, for instance — rename or delete it and run setup again). It then saves your configuration and runs your first sync, with progress on the popup's Sync button — switch to your Notion tab to watch the assignments land. Keep a Canvas tab open when you click it, since that's where assignments are read from; if you don't, the columns are still set up correctly and you can press **Sync Now** afterwards.
 
-**Option B — Manual:** Create the database yourself with the properties listed above, then open it in Notion, click "Share" → "Invite" → select your integration, and copy the database ID from the URL.
+Every box in Settings saves as you type, so you can close the popup part-way through setup and pick up where you left off.
+
+**Option B — Manual:** Add the properties listed above to the database yourself, then paste its URL into step 2. Sync only needs the access token and the database ID, so step 3 is optional if the columns already match.
 
 ### 3. Canvas Access (Optional)
 
@@ -85,9 +87,9 @@ If you prefer to use an API token instead, you can generate one from your Canvas
 Finally, input the information you've gathered into the extension's settings.
 
 1.  Click on the extension icon in your browser's toolbar.
-2.  Enter the Notion Integration Token and the Notion Database ID. Leave the Canvas API Token blank unless you specifically want to use one.
-3.  Click **Save Configuration**.
-4.  You can use the "Test" buttons to verify that the connections to Notion and Canvas are working correctly.
+2.  Work through the three steps under **Setup instructions**. On a fresh install the popup opens straight to them; once sync is configured it opens collapsed, and **Settings** reopens it. Entries save automatically as you type — there is no Save button, and closing the popup keeps whatever you have entered so far.
+3.  Leave the Canvas access token (under **Advanced**) blank unless you specifically want to use one.
+4.  Under **Advanced**, the **Test Notion** and **Test Canvas** buttons verify that both connections are working.
 
 ## How to Use
 
@@ -103,8 +105,8 @@ You can monitor the sync status, view sync logs, and check storage usage from th
 The extension provides user-friendly error messages with actionable next steps. Common issues include:
 
 * **"Canvas session expired"**: You're not signed in to Canvas in this browser. Log back in to Canvas, refresh the page, and try again. If you configured a Canvas API token, it may instead be invalid or expired.
-* **"Notion token invalid or expired"**: Your Notion integration token has expired. Generate a new token and update the extension settings.
-* **"Notion connection failed"**: Incorrect integration token or database ID, or the database has not been shared with your integration.
+* **"Notion token invalid or expired"**: Your Notion access token has expired. Generate a new token and update it in the extension's setup steps.
+* **"Notion connection failed"**: Incorrect access token or database ID, or the database has not been shared with your integration.
 * **"Rate limited"**: Too many API requests in a short period. The extension will automatically retry with backoff. If this persists, wait a few minutes before syncing again.
 * **"No Canvas tabs found"**: You must have an active tab open to a Canvas page for sync to work.
 

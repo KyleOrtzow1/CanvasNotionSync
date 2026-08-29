@@ -78,10 +78,12 @@ export class CredentialManager {
       // Encrypt the credentials
       const encryptedCredentials = await this.encryptData(credentials, key);
       
-      // Store encrypted data and metadata
+      // Store encrypted data and metadata. `lastSync` is deliberately untouched:
+      // it records when assignments last synced, and the popup autosaves
+      // credentials on every keystroke — stamping it here would report a sync
+      // that never happened.
       await chrome.storage.local.set({
         encryptedCredentials: encryptedCredentials,
-        lastSync: Date.now(),
         credentialsVersion: '1.0' // For future migration support
       });
 

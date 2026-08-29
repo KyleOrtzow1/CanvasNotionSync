@@ -1,11 +1,10 @@
 import { CredentialManager } from '../credentials/credential-manager.js';
 import { NotionAPI } from '../api/notion-api.js';
 import {
-  ASSIGNMENT_DATABASE_TITLE,
-  ASSIGNMENT_DATABASE_PROPERTIES,
   ASSIGNMENT_DATABASE_DEFAULT_SORTS,
   ASSIGNMENT_DATABASE_COLUMN_ORDER,
-  ASSIGNMENT_DATABASE_HIDDEN_COLUMNS
+  ASSIGNMENT_DATABASE_HIDDEN_COLUMNS,
+  planAssignmentSchemaUpdate
 } from '../utils/notion-database-template.js';
 import { AssignmentSyncer } from '../sync/assignment-syncer.js';
 import { AssignmentCacheManager } from '../cache/assignment-cache-manager.js';
@@ -295,54 +294,93 @@ export async function testNotionConnection(token, databaseId) {
  */
 async function buildDefaultViewConfiguration(notionAPI, dataSourceId) {
   const dataSource = await notionAPI.getDataSource(dataSourceId);
-  const schema = dataSource.properties || {};
+  const schema = new Map(Object.entries(dataSource.properties || {}));
 
   const toEntry = (name, visible) => {
-    const property = Object.prototype.hasOwnProperty.call(schema, name) ? schema[name] : null; // eslint-disable-line security/detect-object-injection -- key presence just verified via hasOwnProperty
+    const property = schema.get(name);
     return property ? { property_id: property.id, visible } : null;
   };
 
-  const properties = [
+  const laidOut = [
     ...ASSIGNMENT_DATABASE_COLUMN_ORDER.map(name => toEntry(name, true)),
     ...ASSIGNMENT_DATABASE_HIDDEN_COLUMNS.map(name => toEntry(name, false))
   ].filter(Boolean);
 
-  return { type: 'table', properties };
+  // Columns of the user's own, on a database they built themselves, keep their
+  // place after the ones sync writes to — omitting them from the configuration
+  // would drop them out of the view.
+  const placed = new Set([...ASSIGNMENT_DATABASE_COLUMN_ORDER, ...ASSIGNMENT_DATABASE_HIDDEN_COLUMNS]);
+  const extras = [...schema]
+    .filter(([name]) => !placed.has(name))
+    .map(([, property]) => ({ property_id: property.id, visible: true }));
+
+  return { type: 'table', properties: [...laidOut, ...extras] };
 }
 
-// Creates a ready-to-sync assignments database (with the exact columns
-// assignment-syncer.js writes to) as a child of a page the user has already
-// shared with their integration. Powers the "Create Database" popup button.
-export async function createNotionDatabase(token, parentPageId) {
+/**
+ * Fit a database the user made in Notion with the columns sync writes to:
+ * rename its title property, add whatever is missing, and lay out its default
+ * view. Powers the "Set Up Database" button in the popup's setup steps.
+ *
+ * Nothing is destructive — existing columns of the right type are left exactly
+ * as they are, and a name held by an incompatible column stops setup with an
+ * explanation rather than being retyped underneath the user.
+ */
+export async function prepareNotionDatabase(token, databaseId) {
   try {
     const notionAPI = new NotionAPI(token);
-    const database = await notionAPI.createDatabase(
-      parentPageId,
-      ASSIGNMENT_DATABASE_TITLE,
-      ASSIGNMENT_DATABASE_PROPERTIES
-    );
+    const database = await notionAPI.getDatabase(databaseId);
 
     const dataSourceId = database.data_sources?.[0]?.id ?? null;
-
-    // Best-effort: sort and lay out the view Notion auto-creates. Not fatal if
-    // it fails — the database is already fully usable without it.
-    if (dataSourceId) {
-      try {
-        const views = await notionAPI.listViews(dataSourceId);
-        const defaultViewId = views.results?.[0]?.id;
-        if (defaultViewId) {
-          await notionAPI.updateView(defaultViewId, {
-            sorts: ASSIGNMENT_DATABASE_DEFAULT_SORTS,
-            configuration: await buildDefaultViewConfiguration(notionAPI, dataSourceId)
-          });
-        }
-      } catch (viewError) {
-        Debug.error('Could not configure default view:', viewError.message);
-        SyncLogger.warn(`Database created, but the default view could not be configured: ${viewError.message}`);
-      }
+    if (!dataSourceId) {
+      return {
+        success: false,
+        error: 'That link points at something without a data source. Make sure it is a Notion database, not a plain page.'
+      };
     }
 
-    SyncLogger.info(`Created Notion database "${ASSIGNMENT_DATABASE_TITLE}"`, { databaseId: database.id });
+    const dataSource = await notionAPI.getDataSource(dataSourceId);
+    const plan = planAssignmentSchemaUpdate(dataSource.properties);
+
+    if (plan.conflicts.length > 0) {
+      const described = plan.conflicts
+        .map(c => `"${c.name}" is a ${c.actualType} column but sync needs a ${c.expectedType} one`)
+        .join('; ');
+      SyncLogger.warn(`Database setup blocked by column conflicts: ${described}`);
+      await SyncLogger.flush();
+      return {
+        success: false,
+        error: `Conflicting columns: ${described}. Rename or delete them in Notion, then try again — setup won't retype a column you already have data in.`
+      };
+    }
+
+    if (Object.keys(plan.updates).length > 0) {
+      await notionAPI.updateDataSourceProperties(dataSourceId, plan.updates);
+    }
+
+    // Best-effort: sort and lay out the database's default view. Not fatal if
+    // it fails — the columns are in place and sync works without it.
+    try {
+      const views = await notionAPI.listViews(dataSourceId);
+      const defaultViewId = views.results?.[0]?.id;
+      if (defaultViewId) {
+        await notionAPI.updateView(defaultViewId, {
+          sorts: ASSIGNMENT_DATABASE_DEFAULT_SORTS,
+          configuration: await buildDefaultViewConfiguration(notionAPI, dataSourceId)
+        });
+      }
+    } catch (viewError) {
+      Debug.error('Could not configure default view:', viewError.message);
+      SyncLogger.warn(`Columns are set up, but the default view could not be configured: ${viewError.message}`);
+    }
+
+    const changeCount = plan.added.length + (plan.renamedTitleFrom ? 1 : 0);
+    SyncLogger.info(
+      changeCount > 0
+        ? `Set up Notion database with ${changeCount} column change(s)`
+        : 'Notion database already had every column sync needs',
+      { databaseId: database.id }
+    );
     await SyncLogger.flush();
 
     return {
@@ -350,17 +388,21 @@ export async function createNotionDatabase(token, parentPageId) {
       databaseId: database.id,
       dataSourceId,
       url: database.url,
-      message: `Created "${ASSIGNMENT_DATABASE_TITLE}" with the columns needed for sync.`
+      added: plan.added,
+      renamedTitleFrom: plan.renamedTitleFrom,
+      message: changeCount > 0
+        ? `Added ${plan.added.length} column${plan.added.length === 1 ? '' : 's'} sync needs.`
+        : 'That database already had every column sync needs.'
     };
   } catch (error) {
-    Debug.error('Create database failed:', error.message);
-    SyncLogger.error(`Failed to create Notion database: ${error.message}`, { status: error.status });
+    Debug.error('Database setup failed:', error.message);
+    SyncLogger.error(`Failed to set up Notion database: ${error.message}`, { status: error.status });
     await SyncLogger.flush();
 
     if (error.status === 404) {
       return {
         success: false,
-        error: 'Notion Page Not Found: Could not find that page, or the integration cannot access it. Open the page in Notion, click "..." > "Connections", add your integration, then try again.'
+        error: 'Notion Database Not Found: Could not find that database, or the integration cannot access it. Open it in Notion, click "..." > "Connections", add Canvas Sync, then try again.'
       };
     }
 

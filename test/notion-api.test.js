@@ -165,54 +165,7 @@ describe('NotionAPI.createPage', () => {
 });
 
 // ---------------------------------------------------------------------------
-// createDatabase
-// ---------------------------------------------------------------------------
-
-describe('NotionAPI.createDatabase', () => {
-  let api;
-
-  beforeEach(() => {
-    api = new NotionAPI('test-token');
-    globalThis.fetch = jest.fn();
-  });
-
-  test('returns created database on 200', async () => {
-    const payload = { id: 'new-db-id', url: 'https://notion.so/new-db-id', data_sources: [{ id: 'ds1' }] };
-    globalThis.fetch.mockResolvedValueOnce(makeResponse(payload));
-    const result = await api.createDatabase('page1', 'Canvas Assignments', { 'Assignment Name': { title: {} } });
-    expect(result.id).toBe('new-db-id');
-    expect(result.url).toBe('https://notion.so/new-db-id');
-  });
-
-  test('sends page_id parent, title, and properties under initial_data_source', async () => {
-    globalThis.fetch.mockResolvedValueOnce(makeResponse({ id: 'db1' }));
-    const properties = { 'Assignment Name': { title: {} }, 'Course': { select: {} } };
-    await api.createDatabase('parent-page-1', 'Canvas Assignments', properties);
-    const [url, opts] = globalThis.fetch.mock.calls[0];
-    expect(url).toBe('https://api.notion.com/v1/databases');
-    expect(opts.method).toBe('POST');
-    const body = JSON.parse(opts.body);
-    expect(body.parent).toEqual({ type: 'page_id', page_id: 'parent-page-1' });
-    expect(body.title).toEqual([{ type: 'text', text: { content: 'Canvas Assignments' } }]);
-    // Notion-Version 2025-09-03 ignores a top-level `properties` field entirely —
-    // the schema must be nested under initial_data_source or it's silently dropped.
-    expect(body.properties).toBeUndefined();
-    expect(body.initial_data_source).toEqual({ properties });
-  });
-
-  test('throws 404 when parent page is not shared with the integration', async () => {
-    globalThis.fetch.mockResolvedValueOnce(makeResponse({ message: 'not found' }, 404));
-    await expect(api.createDatabase('missing-page', 'Title', {})).rejects.toMatchObject({ status: 404 });
-  });
-
-  test('throws on 401 invalid token', async () => {
-    globalThis.fetch.mockResolvedValueOnce(makeResponse({ message: 'unauthorized' }, 401));
-    await expect(api.createDatabase('page1', 'Title', {})).rejects.toMatchObject({ status: 401 });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// listViews / updateView
+// getDataSource / updateDataSourceProperties / listViews / updateView
 // ---------------------------------------------------------------------------
 
 describe('NotionAPI.getDataSource', () => {
@@ -237,6 +190,33 @@ describe('NotionAPI.getDataSource', () => {
   test('throws on 404', async () => {
     globalThis.fetch.mockResolvedValueOnce(makeResponse({ message: 'not found' }, 404));
     await expect(api.getDataSource('missing')).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe('NotionAPI.updateDataSourceProperties', () => {
+  let api;
+
+  beforeEach(() => {
+    api = new NotionAPI('test-token');
+    globalThis.fetch = jest.fn();
+  });
+
+  test('PATCHes the data source with the given property changes', async () => {
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ id: 'ds1' }));
+
+    const properties = { 'title-id': { name: 'Assignment Name' }, 'Points': { number: {} } };
+    const result = await api.updateDataSourceProperties('ds1', properties);
+
+    expect(result).toEqual({ id: 'ds1' });
+    const [url, options] = globalThis.fetch.mock.calls[0];
+    expect(url).toBe('https://api.notion.com/v1/data_sources/ds1');
+    expect(options.method).toBe('PATCH');
+    expect(JSON.parse(options.body)).toEqual({ properties });
+  });
+
+  test('throws with the status attached on failure', async () => {
+    globalThis.fetch.mockResolvedValueOnce(makeResponse({ message: 'unauthorized' }, 401));
+    await expect(api.updateDataSourceProperties('ds1', {})).rejects.toMatchObject({ status: 401 });
   });
 });
 
