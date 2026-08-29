@@ -359,6 +359,218 @@
         transform: translateY(0);
       }
     }
+
+    .autosave-note {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: #777;
+      margin: 0 4px 8px 4px;
+    }
+
+    .save-indicator {
+      color: #2e7d32;
+      font-weight: 600;
+      transition: opacity 0.2s ease;
+    }
+
+    .save-indicator.hidden {
+      display: none;
+    }
+
+    .accordion {
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .accordion-toggle {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      background: transparent;
+      border: none;
+      padding: 14px 16px;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      color: #333;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .accordion-toggle:hover {
+      background: #f8f9fa;
+    }
+
+    .accordion-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .accordion-badge {
+      font-size: 11px;
+      font-weight: 500;
+      color: #666;
+      background: #eef1f3;
+      border-radius: 10px;
+      padding: 2px 8px;
+    }
+
+    .accordion-badge.complete {
+      color: #155724;
+      background: #d4edda;
+    }
+
+    .chevron {
+      color: #888;
+      font-size: 11px;
+      display: inline-block;
+      transition: transform 0.2s ease;
+    }
+
+    .accordion-toggle[aria-expanded="true"] .chevron {
+      transform: rotate(180deg);
+    }
+
+    .accordion-body {
+      padding: 4px 16px 16px 16px;
+      border-top: 1px solid #eee;
+    }
+
+    .accordion-body.hidden {
+      display: none;
+    }
+
+    .steps {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .step {
+      padding: 14px 0;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .step:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .step-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .step-num {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+      border-radius: 50%;
+      background: #e9ecef;
+      color: #555;
+      font-size: 11px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .step.complete .step-num {
+      background: #2e7d32;
+      color: #fff;
+    }
+
+    .step-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .step-body {
+      padding-left: 28px;
+      font-size: 13px;
+      color: #555;
+      line-height: 1.5;
+    }
+
+    .step-body p {
+      margin: 0 0 8px 0;
+    }
+
+    .step-body strong {
+      color: #333;
+    }
+
+    .step-body code {
+      background: #f1f3f5;
+      border-radius: 3px;
+      padding: 1px 4px;
+      font-size: 11px;
+    }
+
+    .inline-field {
+      margin-top: 10px;
+    }
+
+    .inline-field label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #444;
+    }
+
+    .field-hint {
+      font-size: 11px;
+      color: #777;
+      margin-top: 4px;
+      line-height: 1.4;
+    }
+
+    .field-hint.warn {
+      color: #b26a00;
+    }
+
+    .setup-done {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #155724;
+      background: #d4edda;
+      border: 1px solid #c3e6cb;
+      border-radius: 4px;
+      padding: 8px 10px;
+      word-break: break-all;
+    }
+
+    .setup-done.hidden {
+      display: none;
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+    }
+
+    .checkbox-row input {
+      margin-right: 8px;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-row .btn {
+      flex: 1;
+    }
   </style>
 </head>
 <body>
@@ -423,74 +635,112 @@
 
   <!-- Collapsible settings section -->
   <div id="settingsSection" class="settings-section hidden">
-    <div class="section">
-      <h3>Configuration</h3>
-      
-      <div class="form-group">
-        <label for="canvasToken">Canvas API Token (optional)</label>
-        <input type="password" id="canvasToken" placeholder="Not needed — leave blank to use your Canvas login">
-        <div class="help-text">Leave blank: the extension uses your logged-in Canvas session. Only add a token if you prefer one — get it from Canvas → Settings → New Access Token.</div>
-      </div>
-      
-      <div class="form-group">
-        <label for="notionToken">Notion Integration Token</label>
-        <input type="password" id="notionToken" placeholder="secret_xxxxxxxxxxxxx">
-        <div class="help-text">Get this from your Notion integrations page</div>
-      </div>
-      
-      <div class="form-group">
-        <label for="notionDatabase">Notion Database ID or URL</label>
-        <input type="text" id="notionDatabase" placeholder="Paste the database URL, or its 32-character ID">
-        <div class="help-text">Paste the whole Notion database URL and the ID is pulled out for you — a bare or dashed ID works too. Don't have a database yet? Use "Create Database" below.</div>
-      </div>
 
-      <div class="help-text" style="margin-bottom: 8px;">Partial configurations save fine — fill in what you have now and add the rest later.</div>
-      <button id="saveBtn" class="btn">Save Configuration</button>
-      <button id="testBtn" class="btn btn-secondary">Test Notion</button>
-      <button id="testCanvasBtn" class="btn btn-secondary">Test Canvas API</button>
-      <button id="clearDataBtn" class="btn btn-danger">Clear All Data</button>
-      <button id="cleanupCacheBtn" class="btn btn-secondary">Clear Old Cache</button>
-      <div class="form-group" style="margin-top: 16px; padding-top: 12px; border-top: 1px solid #eee;">
-        <label style="display: flex; align-items: center; cursor: pointer;">
-          <input type="checkbox" id="debugMode" style="margin-right: 8px;">
-          Enable Debug Logging
-        </label>
-        <div class="help-text">Shows detailed logs in the browser console for troubleshooting.</div>
+    <div class="autosave-note">
+      Everything you type here saves automatically.
+      <span id="saveIndicator" class="save-indicator hidden">Saved ✓</span>
+    </div>
+
+    <!-- Guided setup: the instructions and the inputs they ask for, in one place -->
+    <div class="section accordion">
+      <button type="button" class="accordion-toggle" id="setupToggle" aria-expanded="false" aria-controls="setupBody">
+        <span class="accordion-title">Setup instructions</span>
+        <span class="accordion-right">
+          <span id="setupBadge" class="accordion-badge">Step 1 of 3</span>
+          <span class="chevron" aria-hidden="true">▾</span>
+        </span>
+      </button>
+
+      <div class="accordion-body hidden" id="setupBody">
+        <ol class="steps">
+
+          <li class="step" id="setupStep1">
+            <div class="step-head">
+              <span class="step-num" aria-hidden="true">1</span>
+              <span class="step-title">Create a Notion integration</span>
+            </div>
+            <div class="step-body">
+              <p>Open <a href="https://www.notion.so/my-integrations" target="_blank" rel="noopener noreferrer">notion.so/my-integrations</a> and click <strong>New connection</strong>.</p>
+              <p>Name it <strong>Canvas Sync</strong> — that exact name is what you'll search for in step 2.</p>
+              <p>Find the <strong>Access token</strong>, reveal it, and copy it.</p>
+              <div class="inline-field">
+                <label for="notionToken">Paste the access token</label>
+                <input type="password" id="notionToken" placeholder="ntn_…" autocomplete="off" spellcheck="false">
+                <div class="field-hint" id="notionTokenHint">Starts with <code>ntn_</code>. Stored encrypted on this computer only.</div>
+              </div>
+            </div>
+          </li>
+
+          <li class="step" id="setupStep2">
+            <div class="step-head">
+              <span class="step-num" aria-hidden="true">2</span>
+              <span class="step-title">Add it to a Notion page</span>
+            </div>
+            <div class="step-body">
+              <p>In Notion, make a new page — the assignments database gets created inside it.</p>
+              <p>Click the <strong>•••</strong> menu at the top right of that page, scroll down to <strong>Connections</strong>, search for <strong>Canvas Sync</strong>, click it, then click <strong>Add to page</strong> and confirm.</p>
+              <p>Copy that page's URL from your browser's address bar.</p>
+              <div class="inline-field">
+                <label for="notionParentPage">Paste the page URL</label>
+                <input type="text" id="notionParentPage" placeholder="https://www.notion.so/…" autocomplete="off" spellcheck="false">
+                <div class="field-hint" id="notionParentPageHint">The page's 32-character ID works too.</div>
+              </div>
+            </div>
+          </li>
+
+          <li class="step" id="setupStep3">
+            <div class="step-head">
+              <span class="step-num" aria-hidden="true">3</span>
+              <span class="step-title">Create the database</span>
+            </div>
+            <div class="step-body">
+              <p>Open a Canvas tab first — that's where your assignments are read from — then click:</p>
+              <button id="createDatabaseBtn" class="btn">Create Database</button>
+              <div class="field-hint">Builds a <strong>Canvas Assignments</strong> database inside that page with every column sync needs, then runs your first sync and opens the database so you can watch it fill in.</div>
+              <div id="setupDone" class="setup-done hidden">Connected to database <code id="setupDatabaseId"></code></div>
+            </div>
+          </li>
+
+        </ol>
       </div>
     </div>
 
-    <div class="section">
-      <h3>Don't have a database yet?</h3>
-      <div class="form-group">
-        <label for="notionParentPage">Notion Page to Create It In</label>
-        <input type="text" id="notionParentPage" placeholder="Paste a Notion page URL, or its 32-character ID">
-        <div class="help-text">Create (or pick) any page in Notion, share it with your integration (<strong>"..." menu → Connections → add your integration</strong>), then paste that page's URL here. This needs your Notion Integration Token entered above.</div>
-      </div>
-      <button id="createDatabaseBtn" class="btn btn-secondary">Create Database</button>
-      <div class="help-text" style="margin-top: 8px;">Creates a new "Canvas Assignments" database inside that page, with all the columns sync needs already set up, saves your configuration, and starts your first sync, and takes you straight to the new database so you can watch your assignments appear. Have a Canvas tab open first — that's where the assignments are read from.</div>
-    </div>
+    <!-- Everything that isn't part of first-time setup -->
+    <div class="section accordion">
+      <button type="button" class="accordion-toggle" id="advancedToggle" aria-expanded="false" aria-controls="advancedBody">
+        <span class="accordion-title">Advanced</span>
+        <span class="accordion-right">
+          <span class="chevron" aria-hidden="true">▾</span>
+        </span>
+      </button>
 
-    <div class="section">
-      <h3>Setup Instructions</h3>
-      <div style="font-size: 13px; color: #666; line-height: 1.4;">
-        <p><strong>1. Create Notion Integration:</strong></p>
-        <ul style="margin: 8px 0; padding-left: 20px;">
-          <li>Go to <a href="https://www.notion.so/my-integrations" target="_blank">notion.so/my-integrations</a></li>
-          <li>Create a new integration</li>
-          <li>Copy the "Internal Integration Token"</li>
-        </ul>
-        
-        <p><strong>2. Get a Database:</strong></p>
-        <ul style="margin: 8px 0; padding-left: 20px;">
-          <li>Easiest: share any Notion page with your integration, paste its URL into "Create Database" below, and click the button — it builds the database and fills in the ID for you.</li>
-          <li>Or manually: open an existing assignments database, click "Share" → "Invite" → select your integration, then copy the database ID from the URL.</li>
-        </ul>
-        
-        <p><strong>3. Canvas Access (optional):</strong></p>
-        <ul style="margin: 8px 0; padding-left: 20px;">
-          <li>The extension uses your logged-in Canvas session — no token needed.</li>
-          <li>If you'd rather use a token, go to Canvas → Account → Settings → Approved Integrations → <strong>+ New Access Token</strong>, and paste it above.</li>
-        </ul>
+      <div class="accordion-body hidden" id="advancedBody">
+        <div class="form-group">
+          <label for="notionDatabase">Notion database ID or URL</label>
+          <input type="text" id="notionDatabase" placeholder="Paste the database URL, or its 32-character ID">
+          <div class="help-text">Already have a Canvas Assignments database? Paste it here instead of doing step 3. Step 3 fills this in for you.</div>
+        </div>
+
+        <div class="form-group">
+          <label for="canvasToken">Canvas access token (optional)</label>
+          <input type="password" id="canvasToken" placeholder="Not needed — leave blank to use your Canvas login">
+          <div class="help-text">Leave blank and the extension uses your logged-in Canvas session. To use a token instead: Canvas → Account → Settings → <strong>+ New Access Token</strong>.</div>
+        </div>
+
+        <div class="form-group">
+          <label class="checkbox-row">
+            <input type="checkbox" id="debugMode">
+            Enable debug logging
+          </label>
+          <div class="help-text">Shows detailed logs in the browser console for troubleshooting.</div>
+        </div>
+
+        <div class="btn-row">
+          <button id="testBtn" class="btn btn-secondary">Test Notion</button>
+          <button id="testCanvasBtn" class="btn btn-secondary">Test Canvas</button>
+        </div>
+        <button id="cleanupCacheBtn" class="btn btn-secondary">Clear Old Cache</button>
+        <button id="clearDataBtn" class="btn btn-danger">Clear All Data</button>
       </div>
     </div>
   </div>

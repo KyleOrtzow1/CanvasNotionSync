@@ -12,9 +12,9 @@ Key features:
 Getting started:
 
 1. Generate a Canvas API token: Canvas → Account → Settings → New Access Token
-2. Create a Notion integration at notion.so/my-integrations and copy the token
-3. Share your Notion assignments database with the integration
-4. Open the extension popup, paste your tokens and database ID, and hit Save
+2. Create a Notion integration named "Canvas Sync" at notion.so/my-integrations and copy its access token
+3. Add that connection to a Notion page ("..." menu -> Connections -> Canvas Sync -> Add to page)
+4. Open the extension popup, go to Settings -> Setup instructions, and follow the three steps — entries save as you type
 5. Navigate to any Canvas page and click "Sync Now" — your assignments will appear in Notion
 
 Built for students and educators who use both Canvas and Notion to stay organized.

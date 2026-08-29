@@ -7,7 +7,6 @@ document.addEventListener('DOMContentLoaded', function() {
   const notionDatabaseInput = document.getElementById('notionDatabase');
   const notionParentPageInput = document.getElementById('notionParentPage');
   const createDatabaseBtn = document.getElementById('createDatabaseBtn');
-  const saveBtn = document.getElementById('saveBtn');
   const testBtn = document.getElementById('testBtn');
   const testCanvasBtn = document.getElementById('testCanvasBtn');
   const manualSyncBtn = document.getElementById('manualSyncBtn');
@@ -29,12 +28,31 @@ document.addEventListener('DOMContentLoaded', function() {
   const clearLogsBtn = document.getElementById('clearLogsBtn');
   const errorsSection = document.getElementById('errorsSection');
   const errorContainer = document.getElementById('errorContainer');
+  const setupToggle = document.getElementById('setupToggle');
+  const setupBody = document.getElementById('setupBody');
+  const setupBadge = document.getElementById('setupBadge');
+  const setupStep1 = document.getElementById('setupStep1');
+  const setupStep2 = document.getElementById('setupStep2');
+  const setupStep3 = document.getElementById('setupStep3');
+  const setupDone = document.getElementById('setupDone');
+  const setupDatabaseId = document.getElementById('setupDatabaseId');
+  const notionTokenHint = document.getElementById('notionTokenHint');
+  const notionParentPageHint = document.getElementById('notionParentPageHint');
+  const advancedToggle = document.getElementById('advancedToggle');
+  const advancedBody = document.getElementById('advancedBody');
+  const saveIndicator = document.getElementById('saveIndicator');
+
+  // Autosave state. Declared before loadConfiguration() runs, since it writes to it.
+  const AUTOSAVE_DELAY_MS = 400;
+  let autosaveTimer = null;
+  let saveIndicatorTimer = null;
+  // What the service worker currently holds, so a half-typed URL can't clobber it.
+  let savedDatabaseId = '';
 
   // Load existing configuration
   loadConfiguration();
   
   // Event listeners
-  saveBtn.addEventListener('click', handleSaveConfiguration);
   testBtn.addEventListener('click', handleTestConnection);
   if (createDatabaseBtn) createDatabaseBtn.addEventListener('click', handleCreateDatabase);
   if (testCanvasBtn) testCanvasBtn.addEventListener('click', handleTestCanvasAPI);
@@ -66,6 +84,21 @@ document.addEventListener('DOMContentLoaded', function() {
       
       if (credentials.notionDatabaseId) {
         notionDatabaseInput.value = credentials.notionDatabaseId;
+        savedDatabaseId = credentials.notionDatabaseId;
+      }
+
+      // The setup page URL isn't a credential, so it lives in a plain local draft.
+      const draft = await chrome.storage.local.get('setupParentPageUrl');
+      if (draft.setupParentPageUrl) {
+        notionParentPageInput.value = draft.setupParentPageUrl;
+      }
+
+      updateFieldHints();
+
+      // Someone still mid-setup should land on the instructions; once sync is
+      // configured the dropdown starts collapsed and stays out of the way.
+      if (!updateSetupProgress()) {
+        openAccordion(setupToggle, setupBody);
       }
 
       // Update last sync time
@@ -90,81 +123,145 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
 
-  async function handleSaveConfiguration() {
+  // ---------------------------------------------------------------------
+  // Autosave
+  //
+  // Every field in Settings persists as you type, so a setup interrupted by the
+  // popup closing picks up exactly where it left off. Tokens and the database ID
+  // go through the service worker, which stores them encrypted; the setup page
+  // URL is a plain local draft that only this popup reads back.
+  // ---------------------------------------------------------------------
+  function queueAutosave() {
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(persistConfiguration, AUTOSAVE_DELAY_MS);
+  }
+
+  function flushAutosave() {
+    if (autosaveTimer === null) return;
+    clearTimeout(autosaveTimer);
+    persistConfiguration();
+  }
+
+  async function persistConfiguration() {
+    autosaveTimer = null;
+
     const canvasToken = canvasTokenInput.value.trim();
     const notionToken = notionTokenInput.value.trim();
-    const notionDatabaseValue = notionDatabaseInput.value.trim();
-
-    // A partial configuration is saveable: fill in whichever fields you have and come
-    // back for the rest. A field left blank clears that stored credential. Values that
-    // are present are still format-checked.
-    if (notionToken && !notionToken.startsWith('secret_') && !notionToken.startsWith('ntn_')) {
-      showStatus('Invalid Notion token format. Should start with "secret_" or "ntn_"', 'error');
-      notionTokenInput.focus();
-      return;
-    }
-
+    const databaseValue = notionDatabaseInput.value.trim();
     // Accepts a pasted Notion URL as well as a bare or dashed database ID.
-    const notionDatabaseId = normalizeNotionDatabaseId(notionDatabaseValue);
-    if (notionDatabaseValue && !notionDatabaseId) {
-      showStatus('Could not find a database ID in that value. Paste the Notion database URL, or its 32-character ID', 'error');
-      notionDatabaseInput.focus();
-      return;
+    const parsedDatabaseId = normalizeNotionDatabaseId(databaseValue);
+
+    // Mid-edit a URL doesn't parse yet; that shouldn't throw away the ID already
+    // stored. Only an emptied field means "forget it".
+    let notionDatabaseId;
+    if (!databaseValue) {
+      notionDatabaseId = null;
+    } else if (parsedDatabaseId) {
+      notionDatabaseId = parsedDatabaseId;
+    } else {
+      notionDatabaseId = savedDatabaseId || null;
     }
 
     try {
-      setButtonLoading(saveBtn, 'Saving...');
+      await chrome.storage.local.set({ setupParentPageUrl: notionParentPageInput.value.trim() });
 
       const result = await chrome.runtime.sendMessage({
         action: 'STORE_CREDENTIALS',
         canvasToken: canvasToken || null,
         notionToken: notionToken || null,
-        notionDatabaseId: notionDatabaseId || null
+        notionDatabaseId: notionDatabaseId
       });
 
-      if (result.success) {
-        // Send Canvas token to content script
-        if (canvasToken) {
-          try {
-            const tabs = await chrome.tabs.query({
-              url: CANVAS_TAB_PATTERNS
-            });
-            
-            for (const tab of tabs) {
-              chrome.tabs.sendMessage(tab.id, {
-                type: 'SET_CANVAS_TOKEN',
-                token: canvasToken
-              }).catch(() => {
-                // Content script might not be loaded, ignore
-              });
-            }
-          } catch (error) {
-            // Failed to query Canvas tabs - extension may not be injected yet
-          }
-        }
-        
-        // Show the extracted ID back, so a pasted URL visibly resolves to what was stored.
-        notionDatabaseInput.value = notionDatabaseId;
-
-        const missing = [];
-        if (!notionToken) missing.push('Notion token');
-        if (!notionDatabaseId) missing.push('Notion database ID');
-
-        if (missing.length > 0) {
-          showStatus(`Configuration saved. Still needed to sync: ${missing.join(' and ')}`, 'info');
-        } else {
-          showStatus('Configuration saved successfully!', 'success');
-        }
-        updateSyncStatus();
-      } else {
-        showStatus('Failed to save configuration: ' + result.error, 'error');
+      if (!result || !result.success) {
+        showStatus('Could not save your settings: ' + ((result && result.error) || 'unknown error'), 'error');
+        return;
       }
+
+      savedDatabaseId = notionDatabaseId || '';
+      flashSaved();
     } catch (error) {
-      showStatus('Failed to save configuration: ' + error.message, 'error');
-    } finally {
-      saveBtn.disabled = false;
-      saveBtn.textContent = 'Save Configuration';
+      showStatus('Could not save your settings: ' + error.message, 'error');
     }
+  }
+
+  function flashSaved() {
+    if (!saveIndicator) return;
+    saveIndicator.classList.remove('hidden');
+    clearTimeout(saveIndicatorTimer);
+    saveIndicatorTimer = setTimeout(() => saveIndicator.classList.add('hidden'), 1500);
+  }
+
+  // ---------------------------------------------------------------------
+  // Guided setup
+  // ---------------------------------------------------------------------
+
+  function isNotionTokenShaped(token) {
+    return token.startsWith('ntn_') || token.startsWith('secret_');
+  }
+
+  /**
+   * Nudge on malformed input without blocking it — whatever is typed is still
+   * saved, so a user can leave a field half-finished and come back to it.
+   */
+  function updateFieldHints() {
+    const token = notionTokenInput.value.trim();
+    const tokenOk = !token || isNotionTokenShaped(token);
+    notionTokenHint.textContent = tokenOk
+      ? 'Starts with "ntn_". Stored encrypted on this computer only.'
+      : 'That doesn\'t look like a Notion access token — it should start with "ntn_".';
+    notionTokenHint.classList.toggle('warn', !tokenOk);
+
+    const page = notionParentPageInput.value.trim();
+    const pageOk = !page || Boolean(normalizeNotionDatabaseId(page));
+    notionParentPageHint.textContent = pageOk
+      ? 'The page\'s 32-character ID works too.'
+      : 'No page ID in that link yet — copy the page URL from your browser\'s address bar.';
+    notionParentPageHint.classList.toggle('warn', !pageOk);
+  }
+
+  /**
+   * Tick off the steps whose inputs are filled in, and summarize on the
+   * dropdown header so the state is readable without expanding it.
+   */
+  function updateSetupProgress() {
+    const databaseId = normalizeNotionDatabaseId(notionDatabaseInput.value);
+    const step1 = isNotionTokenShaped(notionTokenInput.value.trim());
+    const step2 = Boolean(normalizeNotionDatabaseId(notionParentPageInput.value));
+    const step3 = Boolean(databaseId);
+
+    setupStep1.classList.toggle('complete', step1);
+    setupStep2.classList.toggle('complete', step2);
+    setupStep3.classList.toggle('complete', step3);
+
+    if (step3) {
+      setupDatabaseId.textContent = databaseId;
+      setupDone.classList.remove('hidden');
+    } else {
+      setupDone.classList.add('hidden');
+    }
+
+    // Step 2 is a manual action in Notion, so a user who already had a database
+    // can be finished without it — token plus database is what sync actually needs.
+    const configured = step1 && step3;
+    if (configured) {
+      setupBadge.textContent = 'Set up ✓';
+    } else {
+      setupBadge.textContent = `Step ${!step1 ? 1 : (!step2 ? 2 : 3)} of 3`;
+    }
+    setupBadge.classList.toggle('complete', configured);
+
+    return configured;
+  }
+
+  function toggleAccordion(toggle, body) {
+    const willOpen = body.classList.contains('hidden');
+    body.classList.toggle('hidden', !willOpen);
+    toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+  }
+
+  function openAccordion(toggle, body) {
+    body.classList.remove('hidden');
+    toggle.setAttribute('aria-expanded', 'true');
   }
 
   async function handleTestConnection() {
@@ -172,7 +269,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const notionDatabaseId = normalizeNotionDatabaseId(notionDatabaseInput.value);
 
     if (!notionToken || !notionDatabaseId) {
-      showStatus('Please enter Notion token and database ID first', 'error');
+      showStatus('Enter your Notion access token and database ID first', 'error');
       return;
     }
 
@@ -203,13 +300,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const parentPageId = normalizeNotionDatabaseId(notionParentPageInput.value);
 
     if (!notionToken) {
-      showStatus('Please enter your Notion Integration Token first', 'error');
+      showStatus('Paste your Notion access token in step 1 first', 'error');
       notionTokenInput.focus();
       return;
     }
 
     if (!parentPageId) {
-      showStatus('Paste the URL (or 32-character ID) of a Notion page you shared with your integration', 'error');
+      showStatus('Paste the URL of the Notion page you added Canvas Sync to (step 2)', 'error');
       notionParentPageInput.focus();
       return;
     }
@@ -225,9 +322,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
       if (result.success) {
         notionDatabaseInput.value = result.databaseId;
+        savedDatabaseId = result.databaseId;
+        updateSetupProgress();
 
-        // Persist right away — the token is already known-good (it just created
-        // the database), so don't make the user click Save separately to keep it.
+        // Persist right away rather than waiting out the autosave debounce: the
+        // popup is about to be replaced by the new database's tab.
         const saveResult = await chrome.runtime.sendMessage({
           action: 'STORE_CREDENTIALS',
           canvasToken: canvasTokenInput.value.trim() || null,
@@ -236,7 +335,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         if (!saveResult.success) {
-          showStatus('✅ Database created, but saving the configuration failed: ' + saveResult.error + '. Click "Save Configuration" manually.', 'error');
+          showStatus('✅ Database created, but saving the configuration failed: ' + saveResult.error + '. Re-type the last character of a field to try saving again.', 'error');
           openDatabaseTab(result.url, false);
           return;
         }
@@ -491,10 +590,16 @@ document.addEventListener('DOMContentLoaded', function() {
         canvasTokenInput.value = '';
         notionTokenInput.value = '';
         notionDatabaseInput.value = '';
+        notionParentPageInput.value = '';
+        savedDatabaseId = '';
+        await chrome.storage.local.remove('setupParentPageUrl');
         lastSyncElement.textContent = 'Never';
-        
+
         showStatus('✅ All data cleared successfully!', 'success');
+        updateFieldHints();
+        updateSetupProgress();
         updateSyncStatus();
+        openAccordion(setupToggle, setupBody);
       } else {
         showStatus('❌ Failed to clear data: ' + result.error, 'error');
       }
@@ -736,7 +841,23 @@ document.addEventListener('DOMContentLoaded', function() {
   // Load error stats on startup
   loadErrorStats();
 
-  // Update sync status when inputs change
-  notionTokenInput.addEventListener('input', updateSyncStatus);
-  notionDatabaseInput.addEventListener('input', updateSyncStatus);
+  // Settings inputs: reflect the change in the UI, then save it. Every field in
+  // Settings is autosaved, so a half-finished setup survives the popup closing.
+  [canvasTokenInput, notionTokenInput, notionDatabaseInput, notionParentPageInput].forEach((field) => {
+    field.addEventListener('input', () => {
+      updateFieldHints();
+      updateSetupProgress();
+      updateSyncStatus();
+      queueAutosave();
+    });
+    // Leaving a field shouldn't wait out the debounce.
+    field.addEventListener('change', flushAutosave);
+    field.addEventListener('blur', flushAutosave);
+  });
+
+  // The popup is torn down the moment it loses focus — save what's pending first.
+  window.addEventListener('pagehide', flushAutosave);
+
+  setupToggle.addEventListener('click', () => toggleAccordion(setupToggle, setupBody));
+  advancedToggle.addEventListener('click', () => toggleAccordion(advancedToggle, advancedBody));
 });
