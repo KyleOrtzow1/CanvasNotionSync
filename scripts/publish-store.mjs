@@ -458,17 +458,31 @@ async function main(argv) {
     console.log(`Pending submission: ${status.submittedItemRevisionStatus.state}`);
   }
 
+  // A dry run answers "do the credentials work", not "is this releasable".
+  // Getting this far already proves the answer is yes: the item status came
+  // back, which needs a valid key, the right publisher and extension IDs, and
+  // the dashboard grant. Preflight problems are reported as the release-
+  // readiness information they are, and do not fail the run - otherwise
+  // checking credentials on a repo whose version is already published reports
+  // failure while everything actually works.
+  if (opts.dryRun) {
+    console.log('\nCredentials work: authenticated, and the store returned this item.');
+    if (problems.length > 0) {
+      console.log('\nNot ready to release yet:\n');
+      for (const problem of problems) console.log(`  - ${problem}`);
+    } else {
+      console.log(`Ready to release version ${version}.`);
+    }
+    console.log('\nNothing was uploaded and nothing changed.');
+    return;
+  }
+
   if (problems.length > 0) {
     console.error('\nPreflight failed:\n');
     for (const problem of problems) console.error(`  - ${problem}`);
     process.exit(1);
   }
   console.log('Preflight passed.\n');
-
-  if (opts.dryRun) {
-    console.log('Dry run: credentials and preflight are good. Nothing was uploaded.');
-    return;
-  }
 
   await upload(token, publisherId, extensionId, zipPath, version);
 

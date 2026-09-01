@@ -110,6 +110,13 @@ ID is otherwise a 403 with nothing to look at.
 Before trusting it with a real release, check the credentials without
 uploading anything.
 
+**From GitHub (no local setup):** Actions tab → **Verify Store Credentials** →
+**Run workflow**. It runs the same dry run on a runner, using the secrets you
+already configured. That workflow can only ever dry-run, so it cannot publish
+anything by accident.
+
+The rest of this section is the local equivalent.
+
 > **The secrets and variables you set on GitHub are not visible to your own
 > machine.** They exist only inside GitHub Actions runs. To try this locally,
 > set them in your shell first.
@@ -220,6 +227,7 @@ things actually stand before anything else happens.
 | `.github/scripts/check-version-sync.cjs` | Fails CI when versions drift |
 | `.github/scripts/changelog-section.cjs` | Pulls one version's notes out of the changelog |
 | `.github/workflows/release.yml` | Ties it together on a tag push |
+| `.github/workflows/verify-store-credentials.yml` | Dry run on demand, from the Actions tab |
 
 `publish-store.mjs` uses the **v2** API and no dependencies. Both are
 deliberate: the v1 API stops working on **15 October 2026**, and most
