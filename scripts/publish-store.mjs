@@ -47,6 +47,7 @@ const UPLOAD_POLL_TIMEOUT_MS = 5 * 60 * 1000;
 function parseArgs(argv) {
   const opts = {
     zip: null,
+    key: null,
     uploadOnly: false,
     dryRun: false,
     blockOnWarnings: true,
@@ -54,6 +55,7 @@ function parseArgs(argv) {
   };
   for (const arg of argv) {
     if (arg.startsWith('--zip=')) opts.zip = arg.slice('--zip='.length);
+    else if (arg.startsWith('--key=')) opts.key = arg.slice('--key='.length);
     else if (arg === '--upload-only') opts.uploadOnly = true;
     else if (arg === '--dry-run') opts.dryRun = true;
     else if (arg === '--no-block-on-warnings') opts.blockOnWarnings = false;
@@ -77,6 +79,9 @@ Upload and submit a build to the Chrome Web Store.
 Options:
   --zip=<path>              Package to upload. Defaults to the zip matching
                             the version in package.json.
+  --key=<path>              Read the service account key from this file
+                            instead of CWS_SERVICE_ACCOUNT_KEY. Easier
+                            locally - the key file is multi-line JSON.
   --dry-run                 Authenticate and run the preflight checks, then
                             stop. Uploads nothing, changes nothing. Use this
                             to verify credentials without burning a version.
@@ -88,7 +93,10 @@ Options:
                             warnings. By default warnings stop the release.
 
 Environment:
-  CWS_SERVICE_ACCOUNT_KEY   Service account JSON key (the whole file).
+  CWS_SERVICE_ACCOUNT_KEY   Service account JSON key (the whole file). CI uses
+                            this; locally, --key=<path> is easier.
+  CWS_SERVICE_ACCOUNT_KEY_FILE
+                            Path to the key file, as an alternative to --key.
   CWS_PUBLISHER_ID          Publisher ID from the Developer Dashboard.
   CWS_EXTENSION_ID          Extension ID (the one in the store URL).
 `.trim();
@@ -101,7 +109,11 @@ function requireEnv(name) {
   const value = process.env[name];
   if (!value) {
     console.error(`Missing required environment variable: ${name}`);
-    console.error('See RELEASING.md for how these are set up.');
+    console.error(
+      '\nRepository secrets and variables set on GitHub are only visible inside GitHub\n' +
+        'Actions runs - they are not shared with your machine. To run this locally, set\n' +
+        'them in your own shell first. See "Verify it works" in RELEASING.md.'
+    );
     process.exit(1);
   }
   return value;
@@ -112,18 +124,43 @@ function requireEnv(name) {
  * Everything reported here is a shape problem, never the key material - an
  * error message from a release job ends up in a public CI log.
  */
-function loadServiceAccount() {
-  const raw = requireEnv('CWS_SERVICE_ACCOUNT_KEY');
+function loadServiceAccount(keyPath) {
+  // A path is the friendlier route locally: the key file is pretty-printed
+  // JSON, and getting several lines of it into an environment variable is
+  // genuinely awkward on Windows (cmd.exe's `set /p` reads one line and
+  // silently truncates the rest). CI passes the contents directly, because a
+  // secret there never touches disk.
+  const source = keyPath
+    ? { label: keyPath, read: () => readFileSync(keyPath, 'utf8') }
+    : { label: 'CWS_SERVICE_ACCOUNT_KEY', read: () => requireEnv('CWS_SERVICE_ACCOUNT_KEY') };
+
+  let raw;
+  try {
+    raw = source.read();
+  } catch (err) {
+    console.error(`Could not read the service account key from ${source.label}`);
+    console.error(`  - ${err.message}`);
+    process.exit(1);
+  }
+
   let key;
   try {
     key = JSON.parse(raw);
   } catch {
-    console.error('CWS_SERVICE_ACCOUNT_KEY is not valid JSON.');
+    console.error(`${source.label} is not valid JSON.`);
     console.error('It should be the entire service account key file, including the braces.');
+    // The truncation above produces exactly this, so name it rather than
+    // leaving someone to wonder why a file they can see is "not valid JSON".
+    if (!raw.trimEnd().endsWith('}')) {
+      console.error('It looks cut off - the closing brace is missing. If you loaded it into an');
+      console.error('environment variable, the multi-line file was probably truncated; pass');
+      console.error('--key=<path> to read the file directly instead.');
+    }
     process.exit(1);
   }
+
   if (!key.client_email || !key.private_key) {
-    console.error('CWS_SERVICE_ACCOUNT_KEY is missing "client_email" or "private_key".');
+    console.error(`${source.label} is missing "client_email" or "private_key".`);
     console.error('Make sure it is a service account key, not an OAuth client secret.');
     process.exit(1);
   }
@@ -405,7 +442,7 @@ async function main(argv) {
 
   const publisherId = requireEnv('CWS_PUBLISHER_ID');
   const extensionId = requireEnv('CWS_EXTENSION_ID');
-  const serviceAccount = loadServiceAccount();
+  const serviceAccount = loadServiceAccount(opts.key || process.env.CWS_SERVICE_ACCOUNT_KEY_FILE || null);
 
   console.log(`Extension: ${extensionId}`);
   console.log(`Version:   ${version}`);

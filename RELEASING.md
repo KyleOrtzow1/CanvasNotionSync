@@ -108,15 +108,36 @@ ID is otherwise a 403 with nothing to look at.
 ### 4. Verify it works
 
 Before trusting it with a real release, check the credentials without
-uploading anything:
+uploading anything.
+
+> **The secrets and variables you set on GitHub are not visible to your own
+> machine.** They exist only inside GitHub Actions runs. To try this locally,
+> set them in your shell first.
+
+**PowerShell (Windows):**
+
+```powershell
+$env:CWS_PUBLISHER_ID = "..."
+$env:CWS_EXTENSION_ID = "..."
+
+npm run publish:store -- --dry-run --key="$env:USERPROFILE\Downloads\key.json"
+```
+
+**bash / zsh (macOS, Linux):**
 
 ```bash
-export CWS_SERVICE_ACCOUNT_KEY="$(cat ~/Downloads/key.json)"
 export CWS_PUBLISHER_ID=...
 export CWS_EXTENSION_ID=...
 
-npm run publish:store -- --dry-run
+npm run publish:store -- --dry-run --key=~/Downloads/key.json
 ```
+
+`--key=<path>` reads the key file directly, which is easier than getting
+several lines of JSON into an environment variable — `cmd.exe`'s `set /p`
+reads only the first line and truncates the rest silently. (CI uses
+`CWS_SERVICE_ACCOUNT_KEY` instead, so the secret never touches disk on the
+runner. `CWS_SERVICE_ACCOUNT_KEY_FILE` works too if you would rather not
+repeat the flag.)
 
 A dry run authenticates, reads the item's current state, runs every preflight
 check, and stops. It uploads nothing and changes nothing, so it is safe to run
@@ -165,6 +186,10 @@ the dashboard, then re-run.
 **Preflight says the version is already live or lower.**
 The version was not bumped, or the tag points at an old commit. `npm run bump`
 and tag again.
+
+**`Missing required environment variable` when running locally.**
+Repository secrets and variables live on GitHub and are only available inside
+Actions runs. Set them in your own shell, as in [Verify it works](#4-verify-it-works).
 
 **The publish step fails with 403.**
 Either the service account was never added under **Account** in the Developer

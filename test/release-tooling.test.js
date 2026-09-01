@@ -1,4 +1,4 @@
-import { describe, test, expect } from '@jest/globals';
+import { describe, test, expect, jest } from '@jest/globals';
 import { checkVersionSync, versionFromTag } from '../.github/scripts/check-version-sync.cjs';
 import { nextVersion, replaceVersion, updateChangelog, unreleasedIsEmpty, compareVersions } from '../scripts/bump-version.mjs';
 import { parseArgs, liveVersion, preflight } from '../scripts/publish-store.mjs';
@@ -165,6 +165,27 @@ describe('parseArgs', () => {
 
   test('reads a zip path', () => {
     expect(parseArgs(['--zip=build/x.zip']).zip).toBe('build/x.zip');
+  });
+
+  test('reads a key path', () => {
+    expect(parseArgs(['--key=/tmp/key.json']).key).toBe('/tmp/key.json');
+  });
+
+  test('has no key path by default, so the env var is used', () => {
+    expect(parseArgs([]).key).toBeNull();
+  });
+
+  test('rejects an unknown flag rather than ignoring it', () => {
+    // parseArgs exits the process on a bad flag; a typo'd --dryrun must not
+    // silently become a real publish.
+    const exit = jest.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
+    const err = jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => parseArgs(['--dryrun'])).toThrow('exit');
+    expect(exit).toHaveBeenCalledWith(2);
+    exit.mockRestore();
+    err.mockRestore();
   });
 });
 
