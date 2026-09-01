@@ -205,10 +205,29 @@ Tests use Jest with ES modules (`--experimental-vm-modules`). Chrome APIs are mo
 
 ### CI/CD
 
-Two jobs run on every push and pull request to `main` and `develop`:
+Three jobs run on every push and pull request to `main` and `develop`:
 
-* **lint**: ESLint security audit over `src/` + `npm audit`
+* **lint**: ESLint security audit over `src/`, manifest security check, version consistency check, `npm audit`
 * **test**: Jest with coverage artifact upload
+* **test-rate-limiter**: Notion rate limiter integration tests
+
+### Releasing
+
+Releases are automated. Bump the version, tag it, and CI builds the package and
+submits it to the Chrome Web Store:
+
+```bash
+npm run bump -- minor       # updates package.json, manifest.json, lockfile, CHANGELOG
+git commit -am "Release v1.2.0" && git push
+git tag -a v1.2.0 -m "v1.2.0" && git push origin v1.2.0
+```
+
+An approved build waits staged until you release it from the Developer
+Dashboard, and the store listing itself (screenshots, description, promo tiles)
+is still updated by hand — the Chrome Web Store API has no endpoints for it.
+
+See **[RELEASING.md](RELEASING.md)** for the one-time setup, the full runbook,
+and what to do when something fails.
 
 ## Support and Contributions
 

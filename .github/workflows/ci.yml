@@ -26,6 +26,9 @@ jobs:
       - name: Manifest security check
         run: npm run check:security
 
+      - name: Check version consistency
+        run: npm run check:version
+
       - name: Audit dependencies
         run: npm audit --audit-level=high --omit=dev
 
