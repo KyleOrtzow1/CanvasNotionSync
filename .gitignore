@@ -1,6 +1,9 @@
 # Build output
 canvas-notion-sync-v*.zip
 
+# Written by the release workflow, never committed
+RELEASE_NOTES.md
+
 # Node.js dependencies
 node_modules/
 npm-debug.log*

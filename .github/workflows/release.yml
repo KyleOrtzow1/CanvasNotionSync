@@ -1,0 +1,102 @@
+name: Release
+
+# Releases are cut by pushing a version tag:
+#
+#   npm run bump -- minor
+#   # fill in the CHANGELOG entry, commit
+#   git tag -a v1.2.0 -m "v1.2.0" && git push origin v1.2.0
+#
+# workflow_dispatch is the escape hatch: if a release fails partway (a store
+# outage, a rejected upload), re-run it from the Actions tab without having to
+# delete and re-push the tag.
+#
+# See RELEASING.md for the credentials this needs and what stays manual.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      upload_only:
+        description: 'Upload the draft but do not submit it for review'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write # to create the GitHub Release
+
+concurrency:
+  # Two releases running at once would race each other at the store, which
+  # accepts one submission at a time per item.
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      # The same gates CI runs on every push. Repeated here rather than
+      # depended on, because a tag can point at any commit - including one CI
+      # never saw.
+      - name: ESLint security audit
+        run: npx eslint src/ --ext .js --config .eslintrc.security.json
+
+      - name: Manifest security check
+        run: npm run check:security
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high --omit=dev
+
+      - name: Run tests
+        run: npm test
+
+      # For a tag push, this is what proves the tag, package.json and
+      # manifest.json all describe the same release. On workflow_dispatch
+      # there is no tag, so it checks the two files only.
+      - name: Check version consistency
+        run: node .github/scripts/check-version-sync.cjs ${{ github.ref_type == 'tag' && format('--tag={0}', github.ref_name) || '' }}
+
+      - name: Read version
+        id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Build package
+        run: npm run build:zip
+
+      - name: Publish to the Chrome Web Store
+        env:
+          CWS_SERVICE_ACCOUNT_KEY: ${{ secrets.CWS_SERVICE_ACCOUNT_KEY }}
+          CWS_PUBLISHER_ID: ${{ vars.CWS_PUBLISHER_ID }}
+          CWS_EXTENSION_ID: ${{ vars.CWS_EXTENSION_ID }}
+        run: node scripts/publish-store.mjs ${{ inputs.upload_only && '--upload-only' || '' }}
+
+      # Only tag pushes get a GitHub Release. A workflow_dispatch re-run has
+      # no tag to attach one to, and re-releasing an existing tag would fail.
+      - name: Extract release notes
+        if: github.ref_type == 'tag'
+        run: node .github/scripts/changelog-section.cjs "${{ steps.version.outputs.version }}" > RELEASE_NOTES.md
+
+      # Attaching the exact zip that went to the store makes each release
+      # reproducible after the fact: what users got is downloadable here, not
+      # only inferable from a tag.
+      - name: Create GitHub Release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "v$VERSION" \
+            "canvas-notion-sync-v$VERSION.zip" \
+            --title "v$VERSION" \
+            --notes-file RELEASE_NOTES.md \
+            --verify-tag
