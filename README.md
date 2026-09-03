@@ -127,7 +127,10 @@ You can enable **Debug Mode** in the extension settings for verbose logging, and
 
 ## Privacy and Security
 
-The privacy and security of your data are a top priority.
+The privacy and security of your data are a top priority. The full policy is
+published at
+**[kyleortzow1.github.io/CanvasNotionSync/privacy-policy.html](https://kyleortzow1.github.io/CanvasNotionSync/privacy-policy.html)**
+(source: `docs/privacy-policy.html`).
 
 * **Data Protection**: All communication occurs directly between your browser, Canvas, and Notion. No data is collected or transmitted to any third-party servers.
 * **Secure Storage**: Your API tokens are encrypted before being stored locally on your machine.
@@ -140,52 +143,22 @@ While this extension is designed with security in mind, please be aware that you
 ## Project Structure
 
 ```
-├── background.js                  # Service worker entry point
-├── content-script.js              # Injected into Canvas pages; extracts assignments
-├── popup.html / popup.js          # Extension popup UI
-├── manifest.json                  # Chrome extension manifest (MV3)
+├── manifest.json        # Chrome extension manifest (MV3)
+├── background.js        # Service worker entry point
+├── content-script.js    # Injected into Canvas pages; extracts assignments
+├── popup.html/.js       # Extension popup UI
 ├── src/
-│   ├── api/
-│   │   ├── notion-api.js              # Notion API client with retry and pagination
-│   │   ├── notion-rate-limiter.js     # Leaky-bucket rate limiter for Notion
-│   │   └── canvas-rate-limiter.js     # Leaky-bucket rate limiter for Canvas
-│   ├── cache/
-│   │   ├── cache-manager.js               # Base LRU cache with TTL + persistence
-│   │   └── assignment-cache-manager.js    # Unified assignment cache with field-level diffing
-│   ├── credentials/
-│   │   └── credential-manager.js      # AES-GCM encrypted credential storage
-│   ├── handlers/
-│   │   ├── background-handlers.js     # Sync logic, connection testing, notifications
-│   │   └── message-handlers.js        # Routes chrome.runtime.onMessage to handlers
-│   ├── sync/
-│   │   └── assignment-syncer.js       # Core sync: field-level diffing, create/update/delete
-│   ├── utils/
-│   │   ├── debug.js                   # Debug mode flag and logging wrappers
-│   │   ├── error-messages.js          # User-friendly error mapping for Canvas + Notion
-│   │   ├── sanitization.js            # HTML sanitizer (strips scripts, events, entities)
-│   │   ├── storage-monitor.js         # Storage quota monitoring with auto-cleanup
-│   │   └── sync-logger.js            # Persistent sync operation logger
-│   └── validators/
-│       ├── canvas-validator.js        # Validates Canvas API responses
-│       └── notion-validator.js        # Validates/sanitizes data before Notion writes
-└── test/
-    ├── cache.test.js
-    ├── canvas-api.test.js
-    ├── canvas-rate-limiter.test.js
-    ├── canvas-validator.test.js
-    ├── content-script-batch.test.js
-    ├── debug.test.js
-    ├── error-messages.test.js
-    ├── extension.test.js
-    ├── notion-api.test.js
-    ├── notion-validator.test.js
-    ├── sanitization.test.js
-    ├── storage-monitor.test.js
-    ├── sync-logger.test.js
-    ├── validators.test.js
-    └── integration/
-        ├── notion-rate-limiter.integration.test.js
-        └── sync-flow.test.js
+│   ├── api/             # Notion client, Canvas and Notion rate limiters
+│   ├── cache/           # LRU cache with TTL, and the assignment cache built on it
+│   ├── credentials/     # AES-GCM encrypted credential storage
+│   ├── handlers/        # chrome.runtime message routing and sync orchestration
+│   ├── sync/            # Core sync: field-level diffing, create/update/delete
+│   ├── utils/           # Debug logging, error mapping, sanitization, storage quota
+│   └── validators/      # Canvas response and Notion property validation
+├── test/                # Jest suites, mirroring src/ plus integration/
+├── scripts/             # Version bump, zip build, store upload, asset generation
+├── store/               # Chrome Web Store listing copy and images
+└── docs/                # Privacy policy (GitHub Pages) and implementation notes
 ```
 
 ## Development
@@ -205,7 +178,7 @@ Tests use Jest with ES modules (`--experimental-vm-modules`). Chrome APIs are mo
 
 ### CI/CD
 
-Three jobs run on every push and pull request to `main` and `develop`:
+Three jobs run on every push and pull request to `main`:
 
 * **lint**: ESLint security audit over `src/`, manifest security check, version consistency check, `npm audit`
 * **test**: Jest with coverage artifact upload
@@ -228,6 +201,15 @@ is still updated by hand — the Chrome Web Store API has no endpoints for it.
 
 See **[RELEASING.md](RELEASING.md)** for the one-time setup, the full runbook,
 and what to do when something fails.
+
+## Further Reading
+
+* **[docs/notes.md](docs/notes.md)** — design decisions behind the rate
+  limiters, the Notion schema reconciliation, and status preservation, plus
+  known gaps and the feature backlog.
+* **[RELEASING.md](RELEASING.md)** — release runbook.
+* Canvas LMS REST API: https://canvas.instructure.com/doc/api/
+* Notion API: https://developers.notion.com/reference/intro
 
 ## Support and Contributions
 

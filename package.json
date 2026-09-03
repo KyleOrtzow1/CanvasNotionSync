@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
-    "test:integration-rate": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.integration-rate.config.js --runTestsByPath test/integration/notion-rate-limiter.integration.test.js --runInBand",
+    "test:integration-rate": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runTestsByPath test/integration/notion-rate-limiter.integration.test.js --runInBand --testPathIgnorePatterns \"/node_modules/\" --coverage=false",
     "lint": "eslint . --ext .js --config .eslintrc.security.json --ignore-pattern '.github/'",
     "check:security": "node .github/scripts/check-manifest-security.cjs",
     "check:version": "node .github/scripts/check-version-sync.cjs",
