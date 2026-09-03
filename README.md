@@ -206,7 +206,8 @@ and what to do when something fails.
 
 * **[docs/notes.md](docs/notes.md)** — design decisions behind the rate
   limiters, the Notion schema reconciliation, and status preservation, plus
-  known gaps and the feature backlog.
+  the feature backlog. Planned work lives in
+  [issues](https://github.com/KyleOrtzow1/CanvasNotionSync/issues).
 * **[RELEASING.md](RELEASING.md)** — release runbook.
 * Canvas LMS REST API: https://canvas.instructure.com/doc/api/
 * Notion API: https://developers.notion.com/reference/intro

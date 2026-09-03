@@ -81,45 +81,19 @@ appears to succeed and changes nothing.
 
 ## Planned work
 
-Specific, and each one is a real gap in the code as it stands. Triaged out of
-the TODO.md this repo used to carry, which had drifted far enough that ~40 of
-its open items were already built.
+Tracked as GitHub issues, not here — a list in a file is what the old TODO.md
+was, and it drifted until ~40 of its open items were already built.
 
-**Retry Canvas 5xx and network errors.** `CanvasRateLimiter._isRateLimitError()`
-only recognises a 403 whose body mentions rate/throttle/limit. A Canvas 500 or
-a dropped connection fails the assignment outright with no retry.
-`notion-api.js` already retries 5xx with backoff; Canvas has no equivalent.
-
-**Unit tests for `CredentialManager` encrypt/decrypt.** There is no
-`test/credential-manager.test.js`. The module sits around 74% coverage with the
-AES-GCM paths (roughly lines 116-146) untested — the least-covered code that
-most warrants coverage.
-
-**Cache the Notion schema, and validate select options against it.**
-`planAssignmentSchemaUpdate()` reads the data source schema during setup, but
-nothing retains it. Sync writes `Status` and `Course` values without checking
-them against the options the database actually has. Caching the schema for the
-duration of a sync would also cut a request per run.
-
-**Batch Canvas submission fetching.** Submissions are fetched per assignment.
-`/courses/:course_id/students/submissions` returns them per course; worth
-measuring whether mapping them back is cheaper than the current N calls.
-
-**Deduplicate in-flight requests.** `makeAPICall()` will issue a second
-identical request while the first is still open. Keying pending promises by URL
-and returning the existing one would collapse those.
-
-**Validate the Canvas token's format before use.** A malformed token currently
-fails as a generic auth error at request time. Checking shape when it is
-entered would let the popup say what is actually wrong, alongside help text on
-where to get one.
-
-**Circuit breaker for repeated failures.** After N consecutive failures against
-an endpoint, stop issuing requests for a cooling-off period rather than
-retrying through the whole sync.
-
-**Per-request duration tracking.** Record how long each API call takes, keyed
-by endpoint, to find what actually makes a large sync slow.
+| # | |
+| --- | --- |
+| [#54](../../issues/54) | Retry Canvas 5xx and network errors |
+| [#55](../../issues/55) | Unit tests for CredentialManager encrypt/decrypt |
+| [#56](../../issues/56) | Cache the Notion schema and validate select options |
+| [#57](../../issues/57) | Investigate batch Canvas submission fetching |
+| [#58](../../issues/58) | Deduplicate in-flight Canvas requests |
+| [#59](../../issues/59) | Validate the Canvas token's format before use |
+| [#60](../../issues/60) | Circuit breaker for repeated API failures |
+| [#61](../../issues/61) | Per-request duration tracking |
 
 ---
 
