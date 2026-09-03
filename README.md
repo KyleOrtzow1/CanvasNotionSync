@@ -205,8 +205,8 @@ and what to do when something fails.
 ## Further Reading
 
 * **[docs/notes.md](docs/notes.md)** — design decisions behind the rate
-  limiters, the Notion schema reconciliation, and status preservation, plus the
-  feature backlog.
+  limiters, the Notion schema reconciliation, and status preservation, plus
+  known gaps and the feature backlog.
 * **[RELEASING.md](RELEASING.md)** — release runbook.
 * Canvas LMS REST API: https://canvas.instructure.com/doc/api/
 * Notion API: https://developers.notion.com/reference/intro
