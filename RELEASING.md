@@ -12,6 +12,13 @@ uploaded by hand. See [What stays manual](#what-stays-manual).
 
 ## Cutting a release
 
+Before an analytics-enabled release, follow [GA4 configuration and validation](docs/analytics.md)
+and apply the [store privacy disclosure changes](store/privacy-disclosures.md).
+Set the production repository variable `GA4_MEASUREMENT_ID` and secret
+`GA4_API_SECRET`; packaging fails if either is missing. Publish the revised
+privacy policy and confirm GA retention/settings before tagging. The release
+workflow does not update the store's Privacy practices form or GA property.
+
 ```bash
 npm run bump -- minor          # or patch / major / an explicit 1.4.2
 ```

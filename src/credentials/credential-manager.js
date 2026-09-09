@@ -1,4 +1,6 @@
 // Encrypted storage and credential management
+import { analytics } from '../utils/analytics.js';
+
 export class CredentialManager {
   static async generateEncryptionKey() {
     // Try to get existing key from storage
@@ -140,7 +142,11 @@ export class CredentialManager {
 
   static async clearAllData() {
     try {
-      await chrome.storage.local.clear();
+      // Persist opt-out BEFORE deleting anything. Keep this one preference so
+      // worker termination between writes cannot restore the default (on).
+      await analytics.setEnabled(false);
+      const state = await chrome.storage.local.get(null);
+      await chrome.storage.local.remove(Object.keys(state).filter(key => key !== 'analyticsEnabled'));
       return { success: true };
     } catch (error) {
       return { success: false, error: error.message };

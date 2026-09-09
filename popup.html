@@ -601,6 +601,18 @@
 
   <div id="status-message" class="status hidden"></div>
 
+  <div class="section" id="analyticsNotice">
+    <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 12px;">
+      <input type="checkbox" id="analyticsEnabled" disabled aria-describedby="analyticsDescription" style="width: auto; margin-top: 2px;">
+      <span>Share usage and reliability data</span>
+    </label>
+    <p id="analyticsDescription" style="font-size: 11px; color: #666; margin: 6px 0 0;">
+      On by default. Sends feature activity, sync counts, timing, and a random installation ID to Google Analytics.
+      Never sends tokens, course or assignment content, or URLs. Turn off here at any time.
+      <a href="https://kyleortzow1.github.io/CanvasNotionSync/privacy-policy.html" target="_blank" rel="noopener noreferrer">Privacy policy</a>
+    </p>
+  </div>
+
   <!-- Simple sync section (always visible) -->
   <div class="section">
     <div class="sync-info">

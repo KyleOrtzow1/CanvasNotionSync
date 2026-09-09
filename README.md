@@ -132,9 +132,10 @@ published at
 **[kyleortzow1.github.io/CanvasNotionSync/privacy-policy.html](https://kyleortzow1.github.io/CanvasNotionSync/privacy-policy.html)**
 (source: `docs/privacy-policy.html`).
 
-* **Data Protection**: All communication occurs directly between your browser, Canvas, and Notion. No data is collected or transmitted to any third-party servers.
+* **Data Protection**: Assignment data and credentials communicate directly with Canvas and Notion. Optional usage and reliability analytics goes directly to Google Analytics and never includes tokens, database IDs, academic content, URLs, or raw errors.
+* **Analytics Choice**: Analytics is on by default for new installs and upgrades. Turn off **Share usage and reliability data** at the top of the popup at any time; the opt-out survives updates. Events include setup/feature activity, sync counts and durations, fixed error categories, extension version, and a random installation identifier. See [analytics configuration and event definitions](docs/analytics.md).
 * **Secure Storage**: Your API tokens are encrypted before being stored locally on your machine.
-* **Automatic Data Removal**: All stored credentials are automatically cleared from your browser when the extension is uninstalled. You can also manually clear all data at any time using the "Clear All Data" button in the extension's settings.
+* **Data Removal**: Uninstalling removes local storage. **Clear All Data** removes local credentials, cached data, configuration, and analytics identifiers, retaining only the analytics-off preference. Neither operation deletes analytics already received by Google.
 * **Input Validation**: All data from Canvas and Notion is validated and sanitized before use, guarding against malformed responses and injection attacks.
 * **Security Linting**: ESLint enforces `no-eval`, `no-new-func`, `no-implied-eval`, and scans for accidentally committed tokens via `no-secrets`.
 

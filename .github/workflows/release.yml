@@ -71,7 +71,15 @@ jobs:
         run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Build package
-        run: npm run build:zip
+        env:
+          GA4_MEASUREMENT_ID: ${{ vars.GA4_MEASUREMENT_ID }}
+          GA4_API_SECRET: ${{ secrets.GA4_API_SECRET }}
+        run: |
+          npm run configure:analytics
+          npm run build:zip
+
+      # Configuration above fails closed when either GA4 value is missing.
+      # Keep the published ZIP identical to the GitHub Release attachment.
 
       - name: Publish to the Chrome Web Store
         env:

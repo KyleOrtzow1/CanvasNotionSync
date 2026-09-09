@@ -17,6 +17,7 @@ const { SyncLogger } = globalThis;
 import '../utils/canvas-hosts.js';
 const { CANVAS_TAB_PATTERNS } = globalThis;
 import { checkStorageQuota, cleanupOldCache } from '../utils/storage-monitor.js';
+import { analytics, categorizeError, syncCounts } from '../utils/analytics.js';
 
 // Cache manager singleton instance
 let assignmentCacheInstance = null;
@@ -38,7 +39,11 @@ export function getAssignmentCache() {
 }
 
 export async function handleBackgroundSync(canvasToken, options = {}) {
+  const source = options.source || 'popup';
+  const startedAt = Date.now();
+  let started = false;
   if (syncInProgress) {
+    if (source === 'periodic') void analytics.track('auto_sync_skipped', { reason: 'in_progress' });
     throw new Error('Sync already in progress');
   }
   syncInProgress = true;
@@ -68,7 +73,11 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
       throw new Error('No Canvas tabs found. Please open a Canvas page and try again.');
     }
 
-    const activeTab = tabs[0];
+    const activeTab = options.tabId === undefined ? tabs[0] : tabs.find(tab => tab.id === options.tabId);
+    if (!activeTab) throw new Error('No Canvas tabs found for this sync request.');
+    if (options.useStoredCanvasToken) canvasToken = credentials.canvasToken;
+    started = true;
+    void analytics.track('sync_started', { source });
     
     // Try to send Canvas token to content script
     let contentScriptReady = false;
@@ -123,22 +132,34 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
     }
 
     if (response.assignments.length === 0) {
+      await chrome.storage.local.set({
+        sync_progress: { active: false, phase: 'complete', current: 0, total: 0, errorCount: 0, errors: [], startedAt }
+      });
+      void analytics.track('sync_completed', { source, ...syncCounts(null, startedAt) });
       return { success: true, results: [], assignmentCount: 0, message: 'No assignments found to sync' };
     }
 
     // Sync the extracted assignments with active course IDs for deletion detection
     const activeCourseIds = response.activeCourseIds || [];
-    const results = await handleAssignmentSync(response.assignments, activeCourseIds);
+    const results = await handleAssignmentSync(response.assignments, activeCourseIds, { parentSync: true });
 
     // Update last sync time
     await chrome.storage.local.set({ lastSync: Date.now() });
 
     await checkStorageAfterSync();
 
+    void analytics.track('sync_completed', { source, ...syncCounts(results, startedAt) });
     return { success: true, results, assignmentCount: response.assignments.length };
 
 
   } catch (error) {
+    const category = categorizeError(error);
+    if (!started && source === 'periodic' && ['configuration', 'no_canvas_tab'].includes(category)) {
+      void analytics.track('auto_sync_skipped', { reason: category });
+    } else {
+      if (!started) void analytics.track('sync_started', { source });
+      void analytics.track('sync_failed', { source, category, duration_ms: syncCounts(null, startedAt).duration_ms });
+    }
     Debug.error('Background sync failed:', error.message);
     throw error;
   } finally {
@@ -146,8 +167,14 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
   }
 }
 
-export async function handleAssignmentSync(assignments, activeCourseIds = []) {
+export async function handleAssignmentSync(assignments, activeCourseIds = [], options = {}) {
   const syncStart = Date.now();
+  const ownsAnalytics = !options.parentSync;
+  if (ownsAnalytics) {
+    if (syncInProgress) throw new Error('Sync already in progress');
+    syncInProgress = true;
+    void analytics.track('sync_started', { source: 'canvas_page' });
+  }
   try {
     const credentials = await CredentialManager.getCredentials();
 
@@ -227,8 +254,13 @@ export async function handleAssignmentSync(assignments, activeCourseIds = []) {
 
     showNotification('Sync Complete', message);
 
+    if (ownsAnalytics) void analytics.track('sync_completed', { source: 'canvas_page', ...syncCounts(results, syncStart) });
+    if (results.errors.length === 0) void recordVerifiedSetup(credentials.notionToken, credentials.notionDatabaseId);
     return results;
   } catch (error) {
+    if (ownsAnalytics) void analytics.track('sync_failed', {
+      source: 'canvas_page', category: categorizeError(error), duration_ms: syncCounts(null, syncStart).duration_ms
+    });
     Debug.error('Sync failed:', error.message);
 
     // Write error progress state
@@ -249,7 +281,21 @@ export async function handleAssignmentSync(assignments, activeCourseIds = []) {
     const friendly = getUserFriendlyNotionError(error);
     showNotification(friendly.title, `${friendly.message} ${friendly.action}`);
     throw error;
+  } finally {
+    if (ownsAnalytics) syncInProgress = false;
   }
+}
+
+// Verification may finish after the user edits or clears their credentials.
+// Compare locally, and send only the milestone if it still describes the saved
+// configuration. No credential/ID enters the analytics module.
+export async function recordVerifiedSetup(token, databaseId) {
+  try {
+    const saved = await CredentialManager.getCredentials();
+    if (token && databaseId && saved.notionToken === token && saved.notionDatabaseId === databaseId) {
+      void analytics.track('setup_completed');
+    }
+  } catch { /* Analytics must never affect setup or syncing. */ }
 }
 
 // Updated test function for new API structure
@@ -262,6 +308,7 @@ export async function testNotionConnection(token, databaseId) {
     const database = await notionAPI.getDatabase(databaseId);
     
     if (!database.data_sources || database.data_sources.length === 0) {
+      void analytics.track('notion_connection_tested', { outcome: 'failure', category: 'schema' });
       return { 
         success: false, 
         error: 'Database has no data sources. Please ensure this is a valid database with at least one data source.' 
@@ -272,6 +319,8 @@ export async function testNotionConnection(token, databaseId) {
     
     // Test querying the data source
     const queryResult = await notionAPI.queryDataSource(dataSourceId, {});
+    void analytics.track('notion_connection_tested', { outcome: 'success', category: 'unknown' });
+    void recordVerifiedSetup(token, databaseId);
     
     return { 
       success: true, 
@@ -280,6 +329,7 @@ export async function testNotionConnection(token, databaseId) {
 
 
   } catch (error) {
+    void analytics.track('notion_connection_tested', { outcome: 'failure', category: categorizeError(error) });
     Debug.error('Connection test failed:', error.message);
     const friendly = getUserFriendlyNotionError(error);
     return { success: false, error: `${friendly.title}: ${friendly.message} ${friendly.action}` };
@@ -333,6 +383,7 @@ export async function prepareNotionDatabase(token, databaseId) {
 
     const dataSourceId = database.data_sources?.[0]?.id ?? null;
     if (!dataSourceId) {
+      void analytics.track('database_prepared', { outcome: 'failure', category: 'schema' });
       return {
         success: false,
         error: 'That link points at something without a data source. Make sure it is a Notion database, not a plain page.'
@@ -343,6 +394,7 @@ export async function prepareNotionDatabase(token, databaseId) {
     const plan = planAssignmentSchemaUpdate(dataSource.properties);
 
     if (plan.conflicts.length > 0) {
+      void analytics.track('database_prepared', { outcome: 'failure', category: 'schema' });
       const described = plan.conflicts
         .map(c => `"${c.name}" is a ${c.actualType} column but sync needs a ${c.expectedType} one`)
         .join('; ');
@@ -383,6 +435,8 @@ export async function prepareNotionDatabase(token, databaseId) {
     );
     await SyncLogger.flush();
 
+    void analytics.track('database_prepared', { outcome: 'success', category: 'unknown' });
+    void recordVerifiedSetup(token, databaseId);
     return {
       success: true,
       databaseId: database.id,
@@ -395,6 +449,7 @@ export async function prepareNotionDatabase(token, databaseId) {
         : 'That database already had every column sync needs.'
     };
   } catch (error) {
+    void analytics.track('database_prepared', { outcome: 'failure', category: categorizeError(error) });
     Debug.error('Database setup failed:', error.message);
     SyncLogger.error(`Failed to set up Notion database: ${error.message}`, { status: error.status });
     await SyncLogger.flush();
@@ -434,11 +489,12 @@ export function setupPeriodicSync() {
       const credentials = await CredentialManager.getCredentials();
       if (!credentials.notionToken || !credentials.notionDatabaseId) {
         // Not configured yet — nothing to sync.
+        void analytics.track('auto_sync_skipped', { reason: 'configuration' });
         return;
       }
       // canvasToken may be null/undefined; handleBackgroundSync's session-cookie
       // path (see #33) handles that fine.
-      await handleBackgroundSync(credentials.canvasToken);
+      await handleBackgroundSync(credentials.canvasToken, { source: 'periodic' });
     } catch (error) {
       if (error.message === 'Sync already in progress') {
         // A manual sync (or an overlapping auto-sync tick) is already running.
@@ -460,17 +516,9 @@ export function setupPeriodicSync() {
   });
 }
 
-// Security: Clear all data when extension is uninstalled
+// Chrome removes extension storage on uninstall. Normal worker suspension must
+// never delete credentials, the analytics preference, or its installation ID.
 export function setupSecurityHandlers() {
-  chrome.runtime.onSuspend.addListener(async () => {
-    // This runs when the extension is being suspended/uninstalled
-    try {
-      await CredentialManager.clearAllData();
-    } catch (error) {
-      // Silent fail - extension is shutting down
-    }
-  });
-
   // Additional cleanup on startup (in case previous cleanup failed)
 
   chrome.runtime.onStartup.addListener(async () => {

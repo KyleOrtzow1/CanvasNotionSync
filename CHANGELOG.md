@@ -14,6 +14,10 @@ GitHub Release notes — so what is written here is what ships.
 
 ### Added
 
+- Opt-out GA4 tracking for setup, feature use, and sync reliability, with a
+  visible toggle, strict payload allowlists, and direct requests. See
+  `docs/analytics.md` for required configuration and disclosures (#65).
+- Analytics regression tests for privacy, opt-out races, and sync entry points.
 - Automated Chrome Web Store releases: a tagged commit builds, uploads and
   submits the extension for review via the Chrome Web Store API v2
   (`scripts/publish-store.mjs`, `.github/workflows/release.yml`).
@@ -25,6 +29,13 @@ GitHub Release notes — so what is written here is what ships.
   (`.github/scripts/check-version-sync.cjs`).
 - `RELEASING.md`, covering the one-time store/service-account setup, the
   per-release runbook, and what remains a manual step.
+
+### Fixed
+
+- Normal service-worker suspension no longer clears credentials/preferences.
+  Clear All Data retains the analytics-off preference.
+- Canvas-page sync uses the worker's full sync path and overlap guard. Empty
+  sync results clear the active progress indicator.
 
 ## [1.1.0]
 

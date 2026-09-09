@@ -657,12 +657,12 @@ const addSyncButton = () => {
       syncBtn.disabled = true;
 
       try {
-        const assignments = await apiExtractor.extractAssignments();
-        if (assignments.length > 0) {
-          await apiExtractor.syncAssignments(assignments);
-        } else {
-          apiExtractor.showNotification('No assignments found', 'warning');
-        }
+        // The worker owns extraction + Notion writes for every entry point, so
+        // overlap protection and analytics include the full operation.
+        const response = await chrome.runtime.sendMessage({ action: 'START_BACKGROUND_SYNC' });
+        if (!response?.success) throw new Error(response?.error || 'Could not start sync');
+        apiExtractor.showNotification(response.assignmentCount
+          ? `✅ Synced ${response.assignmentCount} assignments to Notion` : 'No assignments found');
       } catch (error) {
         apiExtractor.showNotification('Sync failed: ' + error.message, 'error');
       } finally {

@@ -12,6 +12,7 @@
     "bump": "node scripts/bump-version.mjs",
     "publish:store": "node scripts/publish-store.mjs",
     "build:zip": "node scripts/build-zip.mjs",
+    "configure:analytics": "node scripts/configure-analytics.mjs",
     "assets:store": "node scripts/generate-store-assets.mjs"
   },
   "keywords": [
