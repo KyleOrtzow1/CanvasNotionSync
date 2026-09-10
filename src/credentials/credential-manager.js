@@ -1,4 +1,6 @@
 // Encrypted storage and credential management
+import { analytics } from '../utils/analytics.js';
+
 export class CredentialManager {
   static async generateEncryptionKey() {
     // Try to get existing key from storage
@@ -140,7 +142,7 @@ export class CredentialManager {
 
   static async clearAllData() {
     try {
-      await chrome.storage.local.clear();
+      await analytics.clearData();
       return { success: true };
     } catch (error) {
       return { success: false, error: error.message };

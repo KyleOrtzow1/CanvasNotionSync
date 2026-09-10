@@ -24,7 +24,7 @@
 <body>
 
 <h1>Privacy Policy</h1>
-<p class="updated">Canvas-Notion Assignment Sync &mdash; Last updated: April 1, 2026</p>
+<p class="updated">Canvas-Notion Assignment Sync &mdash; Last updated: September 8, 2026</p>
 
 <h2>Overview</h2>
 <p>Canvas-Notion Assignment Sync ("the Extension") is a Chrome extension that synchronizes assignment data from Canvas LMS to a Notion database. This policy describes what data the Extension accesses, how it is stored, and who it is shared with.</p>
@@ -38,39 +38,47 @@
   <li><strong>Assignment data</strong> &mdash; titles, due dates, point values, submission statuses, grades, course names, and assignment descriptions retrieved from the Canvas API</li>
   <li><strong>Notion page IDs</strong> &mdash; identifiers for synced pages, used to update existing entries instead of creating duplicates</li>
 </ul>
-<p>The Extension does not collect any personal information beyond what is listed above. It does not track browsing history, keystrokes, or any activity outside of Canvas LMS pages.</p>
+<p>The Extension also collects the limited usage and reliability analytics described below unless you turn it off. It does not collect browsing history or keystrokes, or track your activity on unrelated websites.</p>
 
 <h2>How Data Is Stored</h2>
 <ul>
   <li>Any API tokens you provide are encrypted using <strong>AES-GCM 256-bit encryption</strong> with a unique 96-bit initialization vector before being saved to <code>chrome.storage.local</code>.</li>
   <li>Assignment data is cached locally in <code>chrome.storage.local</code> with a <strong>30-day time-to-live</strong>. Expired entries are automatically removed.</li>
-  <li>All data is stored entirely on your device. No data is sent to any server operated by the Extension developer.</li>
+  <li>Credentials and the assignment cache are stored on your device. Assignment data is sent directly to your Notion database for syncing. Analytics is sent directly to Google; there is no server operated by the Extension developer in between.</li>
 </ul>
 
 <h2>Third-Party Services</h2>
-<p>The Extension communicates with two external services, both at the explicit direction of the user:</p>
+<p>The Extension communicates with these external services:</p>
 <ul>
-  <li><strong>Canvas LMS API</strong> (<code>*.instructure.com</code>) &mdash; to retrieve course and assignment data, authenticated with your existing Canvas browser session (or with a Canvas API token, if you provided one)</li>
+  <li><strong>Canvas LMS API</strong> (<code>*.instructure.com</code>, <code>*.canvaslms.com</code>) &mdash; to retrieve course and assignment data, authenticated with your existing Canvas browser session (or with a Canvas API token, if you provided one)</li>
   <li><strong>Notion API</strong> (<code>api.notion.com</code>) &mdash; to create, update, and query pages in your Notion database using your Notion integration token</li>
+  <li><strong>Google Analytics 4</strong> (<code>www.google-analytics.com</code>) &mdash; to measure setup completion, feature use, and sync reliability while analytics is enabled</li>
 </ul>
-<p>The Extension does not send data to any other third-party service, analytics provider, or advertising network.</p>
+
+<h2>Usage and Reliability Analytics</h2>
+<p>Analytics is <strong>on by default</strong>, including when existing users upgrade to the version introducing analytics. Turn it off at any time using <strong>"Share usage and reliability data"</strong> under Settings → Advanced in the Extension popup. Your choice is saved locally and survives updates. Turning analytics off attempts one final opt-out event with the random installation identifier and extension version, then stops analytics. This event contains no academic content or credentials. The installation ID stays on your device while analytics is off. Re-enabling reuses it to connect future activity with earlier activity; nothing is collected or replayed from the opted-out period. Clear All Data preserves both your installation ID and analytics preference.</p>
+<p>Analytics includes installation/update events, popup and manual-sync usage, setup milestones and outcomes, which setting was edited (never its value), sync source, counts of created/updated/skipped/deleted assignments and errors, sync duration, and fixed error/skip categories. Events include the Extension version, a randomly generated installation identifier, and, for foreground activity, a session identifier. The Extension does not link these identifiers to your Canvas or Notion account. This is pseudonymous data, not guaranteed anonymous data.</p>
+<p><strong>Analytics never includes</strong> Canvas or Notion tokens, database or page IDs, names or email addresses, course names, assignment titles/descriptions, grades, URLs, raw error messages, or sync logs. Requests omit cookies and referrers. Google receives your IP address and ordinary network metadata when receiving an HTTPS request. See <a href="https://policies.google.com/privacy">Google's Privacy Policy</a> for its processing practices.</p>
+<p>We use analytics to improve this Extension's setup and reliability. We do not sell this data or use it for advertising. Requests explicitly deny advertising use and personalization. Turning analytics off cancels pending sends, clears the active session and activity checkpoints, and attempts one final opt-out event. No further analytics are sent while off. The installation identifier is retained locally and reused when analytics is turned back on; Clear All Data also retains this identifier and your analytics preference.</p>
 
 <h2>Data Retention and Deletion</h2>
 <ul>
   <li>Cached assignment data expires automatically after 30 days.</li>
-  <li>You can delete all stored data at any time by clicking <strong>"Clear All Data"</strong> in the Extension's settings panel.</li>
+  <li><strong>"Clear All Data"</strong> deletes locally stored credentials, configuration, cached data, and analytics session/activity state, while preserving your installation ID and current analytics preference. If analytics was on, it remains on with the same identifier; if it was off, it remains off.</li>
+  <li>Event-level analytics retention is two months, with retention reset on new activity disabled. Aggregated reports may be retained longer. Clearing local data, opting out, or uninstalling does not delete analytics already received by Google.</li>
   <li>Uninstalling the Extension removes all locally stored data.</li>
 </ul>
 
 <h2>Permissions</h2>
 <p>The Extension requests the following Chrome permissions:</p>
 <ul>
-  <li><strong>storage</strong> &mdash; to persist encrypted credentials and cached data</li>
+  <li><strong>storage</strong> &mdash; to persist encrypted credentials, cached data, preferences, and analytics identifiers</li>
   <li><strong>activeTab</strong> &mdash; to interact with Canvas LMS pages</li>
   <li><strong>scripting</strong> &mdash; to inject the content script into Canvas pages</li>
   <li><strong>alarms</strong> &mdash; to run periodic background syncs (every 30 minutes)</li>
   <li><strong>notifications</strong> &mdash; to display sync status notifications</li>
-  <li><strong>Host access to <code>*.instructure.com</code> and <code>api.notion.com</code></strong> &mdash; to communicate with the Canvas and Notion APIs</li>
+  <li><strong>Host access to <code>*.instructure.com</code>, <code>*.canvaslms.com</code>, and <code>api.notion.com</code></strong> &mdash; to communicate with the Canvas and Notion APIs</li>
+  <li><strong>Host access to <code>www.google-analytics.com</code></strong> &mdash; to send the optional usage and reliability events described above</li>
 </ul>
 
 <h2>Children's Privacy</h2>

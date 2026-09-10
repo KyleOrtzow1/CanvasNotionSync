@@ -35,7 +35,8 @@
   "host_permissions": [
     "https://*.instructure.com/*",
     "https://*.canvaslms.com/*",
-    "https://api.notion.com/*"
+    "https://api.notion.com/*",
+    "https://www.google-analytics.com/*"
   ],
   
   "action": {
@@ -49,6 +50,6 @@
   },
 
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src https://*.instructure.com https://*.canvaslms.com https://api.notion.com"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src https://*.instructure.com https://*.canvaslms.com https://api.notion.com https://www.google-analytics.com"
   }
 }

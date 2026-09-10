@@ -40,6 +40,44 @@ document.addEventListener('DOMContentLoaded', function() {
   const advancedToggle = document.getElementById('advancedToggle');
   const advancedBody = document.getElementById('advancedBody');
   const saveIndicator = document.getElementById('saveIndicator');
+  const analyticsCheckbox = document.getElementById('analyticsEnabled');
+
+  function trackUi(eventName, params = {}) {
+    try {
+      chrome.runtime.sendMessage({ action: 'TRACK_ANALYTICS', eventName, params }).catch(() => {});
+    } catch { /* A closing/invalidated popup must not fail because of telemetry. */ }
+  }
+
+  async function loadAnalyticsPreference() {
+    try {
+      const result = await chrome.runtime.sendMessage({ action: 'GET_ANALYTICS_PREFERENCE' });
+      if (result?.success && analyticsCheckbox) {
+        analyticsCheckbox.checked = result.enabled;
+        analyticsCheckbox.disabled = false;
+      }
+    } catch { /* Configuration and sync still work if analytics is unavailable. */ }
+  }
+
+  if (analyticsCheckbox) analyticsCheckbox.addEventListener('change', async () => {
+    const enabled = analyticsCheckbox.checked;
+    analyticsCheckbox.disabled = true;
+    try {
+      const result = await chrome.runtime.sendMessage({ action: 'SET_ANALYTICS_PREFERENCE', enabled });
+      if (!result?.success) throw new Error('Preference was not saved');
+    } catch {
+      analyticsCheckbox.checked = !enabled;
+      showStatus('Could not save your analytics preference. Please try again.', 'error');
+    } finally {
+      analyticsCheckbox.disabled = false;
+    }
+  });
+  loadAnalyticsPreference();
+  trackUi('popup_opened');
+  for (const [input, setting] of [[canvasTokenInput, 'canvas_token'], [notionTokenInput, 'notion_token'],
+    [notionDatabaseInput, 'notion_database']]) {
+    // change fires on a committed edit, not on every autosaved keystroke.
+    input.addEventListener('change', () => trackUi('settings_changed', { setting }));
+  }
 
   // Autosave state. Declared before loadConfiguration() runs, since it writes to it.
   const AUTOSAVE_DELAY_MS = 400;
@@ -355,7 +393,7 @@ document.addEventListener('DOMContentLoaded', function() {
       showStatus(`✅ ${result.message} Syncing your assignments now…`, 'success');
       prepareDatabaseBtn.disabled = false;
       prepareDatabaseBtn.textContent = 'Set Up Database';
-      await handleManualSync();
+      await handleManualSync('setup');
     } catch (error) {
       showStatus('❌ Could not set up that database: ' + error.message, 'error');
     } finally {
@@ -437,7 +475,7 @@ document.addEventListener('DOMContentLoaded', function() {
     syncStatusElement.classList.remove('has-errors');
   }
 
-  async function handleManualSync() {
+  async function handleManualSync(source = 'popup') {
     try {
       manualSyncBtn.disabled = true;
       updateSyncProgress('starting', 0, 'Starting sync...');
@@ -448,7 +486,8 @@ document.addEventListener('DOMContentLoaded', function() {
       // Start background sync — progress updates come via storage listener
       const syncResult = await chrome.runtime.sendMessage({
         action: 'START_BACKGROUND_SYNC',
-        canvasToken: canvasToken
+        canvasToken: canvasToken,
+        source: source === 'setup' ? 'setup' : 'popup'
       });
 
       if (syncResult.success) {
@@ -480,6 +519,7 @@ document.addEventListener('DOMContentLoaded', function() {
   async function handleDebugModeToggle() {
     const enabled = debugModeCheckbox.checked;
     await chrome.storage.local.set({ debugMode: enabled });
+    trackUi('settings_changed', { setting: 'debug_mode' });
     chrome.runtime.sendMessage({ action: 'SET_DEBUG_MODE', enabled: enabled }).catch(() => {});
   }
 
@@ -539,18 +579,21 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   async function handleClearAllData() {
-    if (!confirm('Are you sure you want to clear all stored data? This will remove all API tokens and configuration.')) {
+    if (!confirm('Are you sure you want to clear all stored data? This will remove all API tokens and configuration. Your analytics preference and installation ID will stay the same.')) {
       return;
     }
 
     try {
       setButtonLoading(clearDataBtn, 'Clearing...');
+      clearTimeout(autosaveTimer);
+      autosaveTimer = null;
 
       const result = await chrome.runtime.sendMessage({
         action: 'CLEAR_ALL_DATA'
       });
 
       if (result.success) {
+
         // Clear the form fields
         canvasTokenInput.value = '';
         notionTokenInput.value = '';

@@ -277,10 +277,13 @@ describe('setupPeriodicSync — periodic auto-sync alarm', () => {
   test('a second tick while a sync is already in flight is skipped and does not double-write sync_progress', async () => {
     await CredentialManager.storeCredentials('canvas-token', 'notion-token', 'db-1');
 
+    let extractionStarted;
+    const started = new Promise((resolve) => { extractionStarted = resolve; });
     let releaseExtract;
     const gate = new Promise((resolve) => { releaseExtract = resolve; });
     chrome.tabs.sendMessage.mockImplementation(async (tabId, msg) => {
       if (msg.type === 'EXTRACT_ASSIGNMENTS') {
+        extractionStarted();
         await gate;
         return { success: true, assignments: [], activeCourseIds: [] };
       }
@@ -288,15 +291,18 @@ describe('setupPeriodicSync — periodic auto-sync alarm', () => {
     });
 
     const firstTick = capturedAlarmListener({ name: 'periodicSync' });
-    // Let the first tick run up to (and block on) the extraction call.
-    await new Promise((resolve) => setTimeout(resolve, 10));
-
-    const writesBeforeSecondTick = mockStorage.set.mock.calls.length;
-    await capturedAlarmListener({ name: 'periodicSync' });
-    expect(mockStorage.set.mock.calls.length).toBe(writesBeforeSecondTick);
-
-    releaseExtract();
-    await firstTick;
+    try {
+      await started;
+      const progressWrites = () => mockStorage.set.mock.calls.filter(([values]) =>
+        Object.hasOwn(values, 'sync_progress')).length;
+      const writesBeforeSecondTick = progressWrites();
+      await capturedAlarmListener({ name: 'periodicSync' });
+      expect(progressWrites()).toBe(writesBeforeSecondTick);
+    } finally {
+      // Never let a failed assertion leave a sync running into the next test.
+      releaseExtract();
+      await firstTick;
+    }
   });
 
   test('a throwing sync is logged via SyncLogger rather than swallowed', async () => {

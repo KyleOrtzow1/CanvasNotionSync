@@ -40,6 +40,14 @@ describe('checkManifestSecurity', () => {
     expect(checkManifestSecurity(manifest)).toEqual([]);
   });
 
+  test('analytics can connect to the exact GA host without remote scripts or content injection', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'manifest.json'), 'utf8'));
+    expect(manifest.host_permissions).toContain('https://www.google-analytics.com/*');
+    expect(manifest.content_security_policy.extension_pages.split(';')[0]).toBe("script-src 'self'");
+    expect(manifest.content_security_policy.extension_pages).toContain('https://www.google-analytics.com');
+    expect(manifest.content_scripts.flatMap(script => script.matches).some(host => host.includes('google-analytics'))).toBe(false);
+  });
+
   test('fails when host_permissions has an http:// entry', () => {
     const manifest = baseManifest();
     manifest.host_permissions.push('http://insecure.example.com/*');
