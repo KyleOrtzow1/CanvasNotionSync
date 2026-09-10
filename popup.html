@@ -601,18 +601,6 @@
 
   <div id="status-message" class="status hidden"></div>
 
-  <div class="section" id="analyticsNotice">
-    <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 12px;">
-      <input type="checkbox" id="analyticsEnabled" disabled aria-describedby="analyticsDescription" style="width: auto; margin-top: 2px;">
-      <span>Share usage and reliability data</span>
-    </label>
-    <p id="analyticsDescription" style="font-size: 11px; color: #666; margin: 6px 0 0;">
-      On by default. Sends feature activity, sync counts, timing, and a random installation ID to Google Analytics.
-      Never sends tokens, course or assignment content, or URLs. Turn off here at any time.
-      <a href="https://kyleortzow1.github.io/CanvasNotionSync/privacy-policy.html" target="_blank" rel="noopener noreferrer">Privacy policy</a>
-    </p>
-  </div>
-
   <!-- Simple sync section (always visible) -->
   <div class="section">
     <div class="sync-info">
@@ -762,6 +750,18 @@
           </label>
           <div class="help-text">Shows detailed logs in the browser console for troubleshooting.</div>
         </div>
+
+  <div class="form-group" id="analyticsNotice">
+    <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 12px;">
+      <input type="checkbox" id="analyticsEnabled" disabled aria-describedby="analyticsDescription" style="width: auto; margin-top: 2px;">
+      <span>Share usage and reliability data</span>
+    </label>
+    <p id="analyticsDescription" style="font-size: 11px; color: #666; margin: 6px 0 0;">
+      On by default. Sends feature activity, sync counts, timing, and a random installation ID to Google Analytics.
+      Never sends tokens, course or assignment content, or URLs. Turning this off sends one final opt-out event, then stops analytics. Your installation ID stays locally while off and is reused if you turn analytics back on. Clear All Data keeps both the ID and this preference.
+      <a href="https://kyleortzow1.github.io/CanvasNotionSync/privacy-policy.html" target="_blank" rel="noopener noreferrer">Privacy policy</a>
+    </p>
+  </div>
 
         <div class="btn-row">
           <button id="testBtn" class="btn btn-secondary">Test Notion</button>

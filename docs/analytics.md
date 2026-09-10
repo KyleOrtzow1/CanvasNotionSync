@@ -3,7 +3,7 @@
 [Issue #65](https://github.com/KyleOrtzow1/CanvasNotionSync/issues/65) uses direct
 GA4 Measurement Protocol requests from the service worker. Analytics defaults to
 on for new installations and upgrades; a saved opt-out always wins. The popup
-disclosure and toggle are visible above the sync controls for every user.
+disclosure and toggle are under Settings → Advanced.
 
 ## Configuration and release
 
@@ -36,7 +36,7 @@ receipt. They are separate release prerequisites.
 
 ## Event contract
 
-The envelope contains a locally generated UUID `client_id` and advertising
+The envelope contains a locally generated random numeric-pair `client_id` and advertising
 consent fields set to `DENIED`. All events have `extension_version`. Only these
 event parameters are accepted; unknown events, extra fields, invalid enum values,
 and invalid numeric ranges drop the whole event. No free text is accepted.
@@ -46,6 +46,7 @@ and invalid numeric ranges drop the whole event. No free text is accepted.
 | `extension_installed` | none | `onInstalled` reason `install` |
 | `extension_updated` | none | Extension update; ignores Chrome updates |
 | `analytics_enabled` | none | User explicitly turns analytics on |
+| `analytics_disabled` | none | One final notification when the user explicitly turns analytics off |
 | `notion_token_saved` | none | First nonempty saved token per analytics identity; does not imply validity |
 | `notion_connection_tested` | `outcome`, `category` | Explicit connection test result |
 | `database_prepared` | `outcome`, `category` | Preparing the user's existing database, not creating a new one |
@@ -73,19 +74,27 @@ The Canvas-page button now measures extraction + Notion work through the same
 worker path as popup/periodic sync. The legacy `SYNC_ASSIGNMENTS` message measures
 only processing of supplied assignments, since extraction predates that message.
 
-There is no `data_cleared` event. Clear All Data first disables analytics, aborts
-pending requests, removes identity/session/checkpoints, and removes other local
-keys. It retains only `analyticsEnabled: false` so a restart cannot turn tracking
-back on. Normal worker suspension does not clear local storage. Re-enabling
-creates a fresh UUID. There is no replay of earlier events; local deletion and
-opt-out do not delete analytics already received by Google.
+There is no `data_cleared` event. Clear All Data aborts pending analytics work,
+removes credentials, caches, configuration, analytics sessions/checkpoints,
+and preserves the installation ID and current analytics preference. If on
+(including the default), future events reuse the ID; if off, tracking stays off.
+Normal worker suspension does not clear local storage.
+
+An explicit UI opt-out saves the off preference, invalidates queued work and
+aborts pending requests, then attempts one final `analytics_disabled` event using
+the previous installation ID (or a newly saved ID if none existed). It includes
+only the standard version/debug metadata, without session or content fields.
+Delivery is best effort with a three-second timeout and no retry. Other events
+are blocked immediately; repeating an already saved opt-out sends nothing.
+Opt-out retains the installation ID locally, clears the active session and activity checkpoints, and collects nothing while off. Re-enabling reuses the ID with a new session, linking future activity with earlier activity; no opted-out events are collected or replayed. Clear All Data also retains the installation ID. Local deletion and opt-out do not delete
+analytics already received by Google.
 
 ## Sessions and interpretation
 
 Popup openings, manual clicks, and committed edits start/refresh a 30-minute
 session in `chrome.storage.session`. Related foreground events may carry its
 numeric `session_id`. Background events neither create nor extend interactive
-sessions; periodic events do not attach to an existing session. We do not invent
+sessions; periodic events do not attach to an existing session. Production builds do not invent
 `engagement_time_msec`: sync runtime is not user engagement. Use custom event
 reports, not default engaged-user/time metrics or Realtime active-user counts.
 
@@ -100,6 +109,14 @@ or URLs to `track()`. UI telemetry and preference messages require the exact
 extension popup sender; UI messages cannot report backend outcomes. Requests
 omit cookies/referrers and reject redirects. Opt-out is enforced by preventing
 requests locally, separately from the explicit advertising-consent denial.
+
+
+Debug builds add `debug_mode: 1` and a synthetic `engagement_time_msec: 100`
+to satisfy [Google's DebugView verification instructions](https://developers.google.com/analytics/devguides/collection/protocol/ga4/verify-implementation).
+This is a development-only diagnostic value, not measured user engagement.
+Production builds omit both fields. Always use a separate development property.
+A validation pass or HTTP 204 alone does not prove ingestion. Check Realtime's
+Event count by Event name separately from active-user counts and DebugView.
 
 ## Reporting setup
 
@@ -127,12 +144,12 @@ as a key event. Create these explorations in the production property:
 - Validate representative payloads with `/debug/mp/collect` and
   `ENFORCE_RECOMMENDATIONS`. Validation does not populate reports or prove the
   secret is valid. Then send normal `/mp/collect` events with `debug_mode: 1`
-  and confirm their receipt in the development property's DebugView.
+  and positive `engagement_time_msec`, then confirm receipt in the development property's DebugView.
 - Exercise install/update, popup, autosave, setup success/failure, all sync
   sources, empty results, partial errors, extraction errors, missing tabs,
   concurrent requests, and a failing/slow analytics connection.
-- Turn analytics off; verify no subsequent GA requests on any path, including
-  after worker restart or extension update. Repeat for Clear All Data. Requests
+- Turn analytics off; verify one final `analytics_disabled` attempt and no other subsequent GA requests, including
+  after worker restart or extension update. Test Clear All Data with analytics on and off: the preference and installation ID must stay unchanged. Requests
   already received by Google cannot be recalled by a local abort.
 - Restore production configuration (`GA4_DEBUG=false`) before a release and
   verify GA property settings and store declarations separately.

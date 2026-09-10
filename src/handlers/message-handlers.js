@@ -37,7 +37,7 @@ export function setupMessageHandlers() {
           return true;
         }
         if (request.action === 'SET_ANALYTICS_PREFERENCE') {
-          analytics.setEnabled(request.enabled).then(result => {
+          analytics.setEnabled(request.enabled, { recordOptOut: true }).then(result => {
             sendResponse(result);
             if (request.enabled) void analytics.track('analytics_enabled');
           }).catch(() => sendResponse({ success: false }));

@@ -579,7 +579,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   async function handleClearAllData() {
-    if (!confirm('Are you sure you want to clear all stored data? This will remove all API tokens and configuration.')) {
+    if (!confirm('Are you sure you want to clear all stored data? This will remove all API tokens and configuration. Your analytics preference and installation ID will stay the same.')) {
       return;
     }
 
@@ -593,7 +593,7 @@ document.addEventListener('DOMContentLoaded', function() {
       });
 
       if (result.success) {
-        if (analyticsCheckbox) analyticsCheckbox.checked = false;
+
         // Clear the form fields
         canvasTokenInput.value = '';
         notionTokenInput.value = '';

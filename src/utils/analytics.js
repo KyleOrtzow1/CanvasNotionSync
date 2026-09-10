@@ -19,6 +19,7 @@ const SCHEMAS = new Map(Object.entries({
   extension_installed: {},
   extension_updated: {},
   analytics_enabled: {},
+  analytics_disabled: {},
   notion_token_saved: {},
   notion_connection_tested: { outcome, category },
   database_prepared: { outcome, category },
@@ -108,20 +109,54 @@ export class Analytics {
     return !this.blocked && state.analyticsEnabled !== false;
   }
 
-  setEnabled(enabled) {
+  setEnabled(enabled, { recordOptOut = false } = {}) {
     if (typeof enabled !== 'boolean') return Promise.reject(new Error('Invalid analytics preference'));
     // Invalidate work immediately, before any async storage operation yields.
     const generation = ++this.generation;
     this.blocked = true;
     for (const controller of this.requests) controller.abort();
     return this.serialize(async () => {
+      const previous = recordOptOut && !enabled
+        ? await chrome.storage.local.get(['analyticsEnabled', 'analyticsClientId']) : null;
       await chrome.storage.local.set({ analyticsEnabled: enabled });
       if (!enabled) {
-        await chrome.storage.local.remove(LOCAL_STATE);
+        // Retain the installation identity across opt-out; clear activity state.
+        await chrome.storage.local.remove(LOCAL_STATE.filter(key => key !== 'analyticsClientId'));
         await chrome.storage.session.remove('analyticsSession');
       }
       if (generation === this.generation) this.blocked = !enabled;
+      let optOutPayload = null;
+      if (previous && previous.analyticsEnabled !== false && this.configured()) {
+        const clientId = typeof previous.analyticsClientId === 'string' && /^[0-9]{1,10}\.[0-9]{1,10}$/.test(previous.analyticsClientId)
+          ? previous.analyticsClientId : Array.from(crypto.getRandomValues(new Uint32Array(2))).join('.');
+        if (clientId !== previous.analyticsClientId) {
+          await chrome.storage.local.set({ analyticsClientId: clientId });
+        }
+        const params = { extension_version: chrome.runtime.getManifest().version };
+        if (this.config.debug === true) Object.assign(params, { debug_mode: 1, engagement_time_msec: 100 });
+        optOutPayload = { client_id: clientId,
+          consent: { ad_user_data: 'DENIED', ad_personalization: 'DENIED' },
+          events: [{ name: 'analytics_disabled', params }] };
+      }
+      return optOutPayload;
+    }).then(async payload => {
+      // One final, bounded notification for an explicit UI opt-out. Tracking is
+      // already blocked and the preference saved; delivery failure cannot undo it.
+      if (payload && generation === this.generation) await this.send(payload);
       return { success: true, enabled };
+    });
+  }
+
+  clearData() {
+    const generation = ++this.generation;
+    this.blocked = true;
+    for (const controller of this.requests) controller.abort();
+    return this.serialize(async () => {
+      const state = await chrome.storage.local.get(null);
+      // Keep identity and preference in place throughout deletion, including saved opt-outs.
+      await chrome.storage.local.remove(Object.keys(state).filter(key => !['analyticsEnabled', 'analyticsClientId'].includes(key)));
+      await chrome.storage.session.remove('analyticsSession');
+      if (generation === this.generation) this.blocked = state.analyticsEnabled === false;
     });
   }
 
@@ -157,8 +192,9 @@ export class Analytics {
         now - skips.get(event.params.reason) < SKIP_INTERVAL_MS) return null;
 
     let clientId = state.analyticsClientId;
-    if (typeof clientId !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(clientId)) {
-      clientId = crypto.randomUUID();
+    if (typeof clientId !== 'string' || !/^[0-9]{1,10}\.[0-9]{1,10}$/.test(clientId)) {
+      // GA4 web streams require a numeric pair, not a UUID. Replace legacy IDs.
+      clientId = Array.from(crypto.getRandomValues(new Uint32Array(2))).join('.');
     }
     const updates = { analyticsClientId: clientId };
     if (MILESTONES.has(event.name)) {
@@ -189,7 +225,12 @@ export class Analytics {
     if (session && Number.isSafeInteger(session.id) && session.id > 0 &&
         Number.isFinite(session.lastActivity) && now - session.lastActivity < SESSION_MS &&
         event.params.source !== 'periodic' && event.name !== 'auto_sync_skipped') params.session_id = session.id;
-    if (this.config.debug === true) params.debug_mode = 1;
+    if (this.config.debug === true) {
+      params.debug_mode = 1;
+      // Google's DebugView verification requires positive engagement time.
+      // Synthetic development-only value; never report it as real engagement.
+      params.engagement_time_msec = 100;
+    }
     this.windowCount++;
     return {
       client_id: clientId,

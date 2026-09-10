@@ -233,16 +233,19 @@ describe('setup, UI boundary and clearing', () => {
     expect(syncAssignments).not.toHaveBeenCalled();
   });
 
-  test('clear-all preserves a durable opt-out while deleting credentials and analytics state', async () => {
-    data = { encryptedCredentials: 'private', analyticsClientId: crypto.randomUUID(), analyticsMilestones: ['setup_completed'] };
+  test.each([true, false, undefined])('clear-all preserves identity and preference %s while deleting credentials and activity state', async (enabled) => {
+    const installationId = '123456789.987654321';
+    data = { encryptedCredentials: 'private', analyticsClientId: installationId, analyticsMilestones: ['setup_completed'] };
+    if (enabled !== undefined) data.analyticsEnabled = enabled;
     sessionData = { analyticsSession: { id: 1 } };
     expect((await send({ action: 'CLEAR_ALL_DATA' })).success).toBe(true);
-    expect(data).toEqual({ analyticsEnabled: false });
+    expect(data).toEqual({ analyticsClientId: installationId, ...(enabled === undefined ? {} : { analyticsEnabled: enabled }) });
     expect(sessionData).toEqual({});
-    globalThis.fetch = jest.fn();
+    globalThis.fetch = jest.fn(async () => ({ ok: true }));
     const freshWorker = new Analytics({ measurementId: 'G-TEST123', apiSecret: 'test-secret' });
-    expect(await freshWorker.track('popup_opened')).toBe(false);
-    expect(fetch).not.toHaveBeenCalled();
+    expect(await freshWorker.track('popup_opened')).toBe(enabled !== false);
+    expect(fetch).toHaveBeenCalledTimes(enabled === false ? 0 : 1);
+    expect(data.analyticsClientId).toBe(installationId);
     expect(track).not.toHaveBeenCalledWith('data_cleared');
   });
 

@@ -46,6 +46,7 @@ describe('analytics privacy boundary and transport', () => {
     const payload = payloads()[0];
     expect(Object.keys(payload).sort()).toEqual(['client_id', 'consent', 'events']);
     expect(payload.client_id).toBe(local.data.analyticsClientId);
+    expect(payload.client_id).toMatch(/^[0-9]{1,10}\.[0-9]{1,10}$/);
     expect(payload.consent).toEqual({ ad_user_data: 'DENIED', ad_personalization: 'DENIED' });
     expect(payload.events).toEqual([{ name: 'popup_opened', params: {
       extension_version: '1.1.0', session_id: expect.any(Number)
@@ -76,7 +77,7 @@ describe('analytics privacy boundary and transport', () => {
   });
 
   test('does not send anything or generate an ID when unconfigured', async () => {
-    expect(await new Analytics().track('extension_installed')).toBe(false);
+    expect(await new Analytics({ measurementId: '', apiSecret: '', debug: false }).track('extension_installed')).toBe(false);
     expect(local.set).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -130,13 +131,23 @@ describe('preference, identity and lifecycle', () => {
     expect(new Set(payloads().map(payload => payload.client_id)).size).toBe(1);
   });
 
+  test('migrates a legacy UUID once and keeps the new ID across worker restarts', async () => {
+    const legacyId = 'f1ef4d74-0b8f-4552-9d04-a6d72894ef0b';
+    local.data.analyticsClientId = legacyId;
+    await client.track('popup_opened');
+    const migratedId = local.data.analyticsClientId;
+    expect(migratedId).toMatch(/^[0-9]{1,10}\.[0-9]{1,10}$/);
+    await new Analytics(CONFIG).track('popup_opened');
+    expect(payloads().map(payload => payload.client_id)).toEqual([migratedId, migratedId]);
+    expect(JSON.stringify(payloads())).not.toContain(legacyId);
+  });
   test('replaces malformed stored IDs rather than forwarding arbitrary storage strings', async () => {
     local.data.analyticsClientId = 'ntn_private-token';
     await client.track('popup_opened');
     expect(JSON.stringify(payloads())).not.toContain('ntn_private');
   });
 
-  test('opt-out invalidates queued preparations and removes all analytics state', async () => {
+  test('opt-out invalidates queued preparations without creating an identity', async () => {
     const event = client.track('popup_opened');
     const preference = client.setEnabled(false);
     expect(await event).toBeFalsy();
@@ -161,7 +172,7 @@ describe('preference, identity and lifecycle', () => {
     expect(await client.track('popup_opened')).toBe(false);
   });
 
-  test('opt-out during an ID write cannot recreate it or send afterwards', async () => {
+  test('opt-out during an ID write retains the identity without sending afterwards', async () => {
     let release;
     let writing;
     const gate = new Promise(resolve => { release = resolve; });
@@ -176,21 +187,69 @@ describe('preference, identity and lifecycle', () => {
     const disable = client.setEnabled(false);
     release();
     await Promise.all([event, disable]);
-    expect(local.data).toEqual({ analyticsEnabled: false });
+    expect(local.data).toEqual({ analyticsEnabled: false, analyticsClientId: expect.stringMatching(/^[0-9]{1,10}\.[0-9]{1,10}$/) });
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  test('reenabling generates a fresh identity and rapid changes honor the last preference', async () => {
+  test('reenabling after a worker restart reuses the identity and starts a fresh session', async () => {
     await client.track('popup_opened');
     const firstId = local.data.analyticsClientId;
+    const oldSession = session.data.analyticsSession;
     await client.setEnabled(false);
-    await client.setEnabled(true);
-    await client.track('popup_opened');
-    expect(local.data.analyticsClientId).not.toBe(firstId);
+    expect(session.data).toEqual({});
+    const restarted = new Analytics(CONFIG);
+    expect(await restarted.track('popup_opened')).toBe(false);
+    expect(local.data.analyticsClientId).toBe(firstId);
+    jest.spyOn(Date, 'now').mockReturnValue(oldSession.lastActivity + 1000);
+    await restarted.setEnabled(true);
+    await restarted.track('popup_opened');
+    expect(local.data.analyticsClientId).toBe(firstId);
+    expect(session.data.analyticsSession.id).not.toBe(oldSession.id);
+    expect(payloads().map(payload => payload.client_id)).toEqual([firstId, firstId]);
     await Promise.all([client.setEnabled(true), client.setEnabled(false)]);
     expect(await client.getEnabled()).toBe(false);
     expect(await client.track('popup_opened')).toBe(false);
     await expect(client.setEnabled('false')).rejects.toThrow();
+  });
+
+  test('explicit opt-out sends one final event and repeated opt-out sends nothing', async () => {
+    await client.track('popup_opened');
+    const id = local.data.analyticsClientId;
+    fetch.mockClear();
+    await client.setEnabled(false, { recordOptOut: true });
+    expect(payloads()).toEqual([{ client_id: id,
+      consent: { ad_user_data: 'DENIED', ad_personalization: 'DENIED' },
+      events: [{ name: 'analytics_disabled', params: { extension_version: '1.1.0' } }] }]);
+    expect(local.data).toEqual({ analyticsEnabled: false, analyticsClientId: id });
+    await client.setEnabled(false, { recordOptOut: true });
+    expect(await client.track('popup_opened')).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test('opt-out remains saved when its final event times out', async () => {
+    jest.useFakeTimers();
+    fetch.mockImplementation((url, { signal }) => new Promise((resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new Error('aborted')));
+    }));
+    const disable = client.setEnabled(false, { recordOptOut: true });
+    await jest.advanceTimersByTimeAsync(3001);
+    await expect(disable).resolves.toEqual({ success: true, enabled: false });
+    expect(local.data).toEqual({ analyticsEnabled: false, analyticsClientId: expect.stringMatching(/^[0-9]{1,10}\.[0-9]{1,10}$/) });
+    expect(await client.track('popup_opened')).toBe(false);
+  });
+
+  test.each([true, false])('clear data preserves the identity and preference %s across restart', async enabled => {
+    await client.track('popup_opened');
+    const previousId = local.data.analyticsClientId;
+    await client.setEnabled(enabled);
+    await client.clearData();
+    expect(local.data).toEqual({ analyticsEnabled: enabled, analyticsClientId: previousId });
+    expect(session.data).toEqual({});
+    const restarted = new Analytics(CONFIG);
+    expect(await restarted.getEnabled()).toBe(enabled);
+    await restarted.setEnabled(true);
+    await restarted.track('popup_opened');
+    expect(local.data.analyticsClientId).toBe(previousId);
   });
 
   test('storage failure while opting out stays blocked in the current worker', async () => {
@@ -250,7 +309,9 @@ describe('event meaning and reporting metadata', () => {
     await client.track('popup_opened');
     await new Analytics({ ...CONFIG, debug: true }).track('popup_opened');
     expect(payloads()[0].events[0].params.debug_mode).toBeUndefined();
+    expect(payloads()[0].events[0].params.engagement_time_msec).toBeUndefined();
     expect(payloads()[1].events[0].params.debug_mode).toBe(1);
+    expect(payloads()[1].events[0].params.engagement_time_msec).toBe(100);
   });
 
   test('summaries extract counts, including partial failures, never content', () => {

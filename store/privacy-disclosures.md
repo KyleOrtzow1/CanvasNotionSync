@@ -17,8 +17,8 @@ Repository edits do not update the Chrome Web Store developer dashboard.
   ordinary HTTPS transport metadata. It receives no academic content, tokens,
   database IDs, URLs, raw errors, or sync logs from the analytics payload.
 - Disclose analytics as on by default for new installs and upgrades, with the
-  always-visible popup toggle and an opt-out that persists across updates.
-  Clear All Data disables analytics and retains the opt-out flag.
+  toggle under Settings → Advanced and an opt-out that persists across updates.
+  Clear All Data preserves the current analytics preference. An explicit opt-out sends one final analytics_disabled event, then stops tracking. The installation ID stays on your device while analytics is off. Re-enabling reuses it to connect future activity with earlier activity; nothing is collected or replayed from the opted-out period. Clear All Data preserves both your installation ID and analytics preference.
 - Declare Google Analytics as a third-party recipient/processor. Do not claim
   that data goes only to Canvas and Notion. There is no sale, advertising, or
   unrelated profiling use in this implementation.

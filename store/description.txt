@@ -44,7 +44,7 @@ YOUR DATA STAYS YOURS
 
 Sync runs on your own computer. Your credentials are encrypted and stored locally, and assignment data goes directly between Canvas and Notion. There's no extra account to create.
 
-Usage and reliability analytics is on by default, including after upgrading. It sends setup and feature activity, sync counts and timing, fixed error categories, extension version, and a random installation ID directly to Google Analytics. It never sends your tokens, course or assignment content, grades, database IDs, URLs, or raw error messages. Turn off "Share usage and reliability data" at the top of the popup at any time; your choice survives updates. Clear All Data also disables analytics. See the privacy policy for retention and details.
+Usage and reliability analytics is on by default, including after upgrading. It sends setup and feature activity, sync counts and timing, fixed error categories, extension version, and a random installation ID directly to Google Analytics. It never sends your tokens, course or assignment content, grades, database IDs, URLs, or raw error messages. Turn off "Share usage and reliability data" under Settings → Advanced at any time; your choice survives updates. Clear All Data preserves your analytics preference. Turning analytics off sends one final opt-out event, then stops tracking. The installation ID stays on your device while analytics is off. Re-enabling reuses it to connect future activity with earlier activity; nothing is collected or replayed from the opted-out period. Clear All Data preserves both your installation ID and analytics preference. See the privacy policy for retention and details.
 
 
 BEFORE YOU INSTALL
