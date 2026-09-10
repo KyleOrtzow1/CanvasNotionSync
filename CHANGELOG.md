@@ -12,6 +12,8 @@ GitHub Release notes — so what is written here is what ships.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-10
+
 ### Added
 
 - Opt-out GA4 tracking for setup, feature use, and sync reliability, with a
