@@ -111,8 +111,52 @@ describe('sync event ownership', () => {
     const response = await handleBackgroundSync(null);
     expect(response.assignmentCount).toBe(0);
     expect(data.sync_progress.active).toBe(false);
+    expect(chrome.notifications.create).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Sync Complete', message: 'No assignment changes'
+    }));
     expect(track).toHaveBeenCalledWith('sync_completed', expect.objectContaining({ created: 0, errors: 0 }));
     expect(track.mock.calls.some(([name]) => name === 'setup_completed')).toBe(false);
+  });
+
+  test('periodic sync with no created or updated assignments completes silently', async () => {
+    syncAssignments.mockResolvedValue({ created: [], updated: [], skipped: [{}], deleted: [], errors: [] });
+
+    await handleBackgroundSync(null, { source: 'periodic' });
+
+    expect(chrome.notifications.create).not.toHaveBeenCalled();
+  });
+
+  test('periodic sync with no assignments completes silently', async () => {
+    chrome.tabs.sendMessage.mockResolvedValue({ success: true, assignments: [] });
+
+    await handleBackgroundSync(null, { source: 'periodic' });
+
+    expect(chrome.notifications.create).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    [{ created: [{}], updated: [] }, '1 new assignment'],
+    [{ created: [], updated: [{}, {}] }, '2 assignments updated'],
+    [{ created: [{}, {}, {}], updated: [{}, {}] }, '3 new, 2 updated']
+  ])('periodic sync reports only assignment changes: %s', async (changes, message) => {
+    syncAssignments.mockResolvedValue({ ...changes, skipped: [{}], deleted: [], errors: [] });
+
+    await handleBackgroundSync(null, { source: 'periodic' });
+
+    expect(chrome.notifications.create).toHaveBeenCalledTimes(1);
+    expect(chrome.notifications.create).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Sync Complete', message
+    }));
+  });
+
+  test('periodic sync still surfaces item errors when nothing changed', async () => {
+    syncAssignments.mockResolvedValue({ created: [], updated: [], skipped: [], deleted: [], errors: [{ error: 'private URL' }] });
+
+    await handleBackgroundSync(null, { source: 'periodic' });
+
+    expect(chrome.notifications.create).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Sync Completed with Errors', message: '1 error'
+    }));
   });
 
   test('partial errors remain a completion with error counts, not a second failure event', async () => {

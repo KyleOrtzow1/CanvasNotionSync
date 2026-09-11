@@ -27,6 +27,38 @@ let assignmentCacheInstance = null;
 // it self-corrects if the service worker is torn down mid-sync.
 let syncInProgress = false;
 
+function syncResultNotification(results) {
+  const created = results.created?.length || 0;
+  const updated = results.updated?.length || 0;
+  const errors = results.errors?.length || 0;
+  const changes = created + updated;
+  let message;
+
+  if (created > 0 && updated > 0) {
+    message = `${created} new, ${updated} updated`;
+  } else if (created > 0) {
+    message = `${created} new assignment${created === 1 ? '' : 's'}`;
+  } else if (updated > 0) {
+    message = `${updated} assignment${updated === 1 ? '' : 's'} updated`;
+  } else {
+    message = 'No assignment changes';
+  }
+
+  if (errors > 0) {
+    const errorSummary = `${errors} error${errors === 1 ? '' : 's'}`;
+    message = changes > 0 ? `${message}, ${errorSummary}` : errorSummary;
+  }
+
+  return { changes, errors, message };
+}
+
+function notifySyncResult(source, results) {
+  const summary = syncResultNotification(results);
+  if (source === 'periodic' && summary.changes === 0 && summary.errors === 0) return;
+
+  showNotification(summary.errors > 0 ? 'Sync Completed with Errors' : 'Sync Complete', summary.message);
+}
+
 /**
  * Get singleton assignment cache instance
  * @returns {AssignmentCacheManager}
@@ -135,13 +167,14 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
       await chrome.storage.local.set({
         sync_progress: { active: false, phase: 'complete', current: 0, total: 0, errorCount: 0, errors: [], startedAt }
       });
+      notifySyncResult(source, { created: [], updated: [], errors: [] });
       void analytics.track('sync_completed', { source, ...syncCounts(null, startedAt) });
       return { success: true, results: [], assignmentCount: 0, message: 'No assignments found to sync' };
     }
 
     // Sync the extracted assignments with active course IDs for deletion detection
     const activeCourseIds = response.activeCourseIds || [];
-    const results = await handleAssignmentSync(response.assignments, activeCourseIds, { parentSync: true });
+    const results = await handleAssignmentSync(response.assignments, activeCourseIds, { parentSync: true, source });
 
     // Update last sync time
     await chrome.storage.local.set({ lastSync: Date.now() });
@@ -170,6 +203,7 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
 export async function handleAssignmentSync(assignments, activeCourseIds = [], options = {}) {
   const syncStart = Date.now();
   const ownsAnalytics = !options.parentSync;
+  const source = options.source || 'canvas_page';
   if (ownsAnalytics) {
     if (syncInProgress) throw new Error('Sync already in progress');
     syncInProgress = true;
@@ -249,10 +283,7 @@ export async function handleAssignmentSync(assignments, activeCourseIds = [], op
       }
     });
 
-    // Show notification with detailed stats
-    const message = `Created: ${results.created.length}, Updated: ${results.updated.length}, Skipped: ${results.skipped.length}`;
-
-    showNotification('Sync Complete', message);
+    notifySyncResult(source, results);
 
     if (ownsAnalytics) void analytics.track('sync_completed', { source: 'canvas_page', ...syncCounts(results, syncStart) });
     if (results.errors.length === 0) void recordVerifiedSetup(credentials.notionToken, credentials.notionDatabaseId);
