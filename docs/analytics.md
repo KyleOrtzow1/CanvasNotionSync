@@ -12,7 +12,7 @@ disclosure and toggle are under Settings → Advanced.
    as the website URL.
 2. Disable Google Signals, advertising personalization, enhanced measurement,
    and unnecessary account data sharing. Do not link advertising accounts. Set
-   event/user retention to **2 months**, with reset on new activity disabled.
+   event/user retention to **14 months**, with reset on new user activity enabled.
    Confirm these settings before publishing the privacy policy.
 3. Set `GA4_MEASUREMENT_ID` and `GA4_API_SECRET` in your shell environment, then
    run `npm run configure:analytics`. This writes `src/utils/analytics-config.js`.
@@ -134,6 +134,29 @@ as a key event. Create these explorations in the production property:
 3. Usage: participating installation IDs with UI/manual-sync/settings events.
    These are installations, not people. Opt-out, reinstalls, and ID resets affect
    coverage and continuity.
+
+## Production reporting configured September 10, 2026
+
+Property `553519881` uses web stream `G-4MYV1NB8TW`. Event and user retention
+are 14 months, with reset on new user activity enabled. Ads personalization is
+disabled in all regions. The six dimensions and six metrics above are registered,
+and `setup_completed` is marked as a key event.
+
+The saved **Extension usage and reliability** exploration contains usage,
+terminal outcomes, failure categories, sampled skip reasons, a new-installation
+setup funnel, and completed-sync workload tabs. `Total users` represents observed
+installation identities, not people. `Sync duration` is a sum; divide it by event
+count within a terminal-event row to obtain mean duration once the new metric has
+populated. Item-error totals are not the number of partially failed syncs.
+The closed setup funnel requires installation, token saved, setup completed, and
+then `sync_completed` with `errors = 0`; existing upgrading installations are not
+its target cohort. Custom definitions need new data after registration; historical
+`(not set)` values and zero custom metrics do not establish missing payload fields.
+Use the development property for tests; the production internal-traffic filter
+remains in Testing and does not exclude developer activity.
+
+The local privacy policy now reflects this retention preference. Publish that
+updated policy through the normal release process.
 
 ## Validation
 
