@@ -91,7 +91,7 @@ describe('CanvasRateLimiter.execute() — queue ordering', () => {
     expect(calls).toBe(1);
   });
 
-  test('does not retry 500 errors', async () => {
+  test('retries 500 errors within the transient budget', async () => {
     let calls = 0;
     const err = new Error('Internal Server Error');
     err.status = 500;
@@ -101,6 +101,20 @@ describe('CanvasRateLimiter.execute() — queue ordering', () => {
         throw err;
       })
     ).rejects.toThrow('Internal Server Error');
+    // 1 initial + 2 transient retries
+    expect(calls).toBe(3);
+  });
+
+  test('does not retry 404 errors', async () => {
+    let calls = 0;
+    const err = new Error('Not Found');
+    err.status = 404;
+    await expect(
+      limiter.execute(async () => {
+        calls++;
+        throw err;
+      })
+    ).rejects.toThrow('Not Found');
     expect(calls).toBe(1);
   });
 });

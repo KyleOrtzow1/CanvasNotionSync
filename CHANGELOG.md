@@ -12,6 +12,13 @@ GitHub Release notes — so what is written here is what ships.
 
 ## [Unreleased]
 
+### Fixed
+
+- Canvas 5xx responses and dropped connections retry with exponential backoff
+  instead of failing the assignment outright. Bounded to two retries, so a
+  Canvas outage still fails quickly; 4xx responses are unchanged and fail fast
+  (#54).
+
 ## [1.2.0] - 2026-09-10
 
 ### Added

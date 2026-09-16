@@ -121,6 +121,56 @@ describe('CanvasRateLimiter', () => {
     });
   });
 
+  describe('_isTransientError', () => {
+    const withStatus = (status, message = 'Canvas API error') => {
+      const error = new Error(message);
+      error.status = status;
+      return error;
+    };
+
+    test('treats 5xx responses as transient', () => {
+      for (const status of [500, 502, 503, 504]) {
+        expect(limiter._isTransientError(withStatus(status))).toBe(true);
+      }
+    });
+
+    test('does not treat 4xx responses as transient', () => {
+      for (const status of [400, 401, 403, 404, 422]) {
+        expect(limiter._isTransientError(withStatus(status))).toBe(false);
+      }
+    });
+
+    test('treats a failed fetch as transient', () => {
+      const messages = [
+        'Failed to fetch',
+        'NetworkError when attempting to fetch resource.',
+        'Load failed',
+        'The network connection was lost.',
+        'net::ERR_CONNECTION_RESET'
+      ];
+
+      for (const message of messages) {
+        const error = new TypeError(message);
+        expect(limiter._isTransientError(error)).toBe(true);
+      }
+    });
+
+    test('does not treat an aborted request as transient', () => {
+      const error = new Error('The user aborted a request.');
+      error.name = 'AbortError';
+      expect(limiter._isTransientError(error)).toBe(false);
+    });
+
+    test('does not treat a programming-bug TypeError as transient', () => {
+      const error = new TypeError("Cannot read properties of undefined (reading 'id')");
+      expect(limiter._isTransientError(error)).toBe(false);
+    });
+
+    test('does not treat an unrecognized error without a status as transient', () => {
+      expect(limiter._isTransientError(new Error('Assignment parsing failed'))).toBe(false);
+    });
+  });
+
   describe('_calculateBackoff', () => {
     test('produces increasing delays across attempts', () => {
       // Use fixed seed-like approach: check that base values increase
@@ -223,11 +273,12 @@ describe('CanvasRateLimiter', () => {
       expect(result).toBe('test-data');
     });
 
-    test('rejects with non-rate-limit errors', async () => {
-      const error = new Error('Network failure');
+    test('rejects with non-retryable errors', async () => {
+      const error = new Error('Canvas API error: 400 Bad Request');
+      error.status = 400;
       await expect(
         limiter.execute(async () => { throw error; })
-      ).rejects.toThrow('Network failure');
+      ).rejects.toThrow('400 Bad Request');
     });
 
     test('processes requests in FIFO order', async () => {
@@ -304,6 +355,129 @@ describe('CanvasRateLimiter', () => {
       ).rejects.toThrow('Unauthorized');
 
       expect(attempts).toBe(1);
+    });
+
+    test('retries a 5xx that succeeds on the next attempt', async () => {
+      limiter._delay = () => Promise.resolve();
+
+      let attempts = 0;
+      const result = await limiter.execute(async () => {
+        attempts++;
+        if (attempts === 1) {
+          const error = new Error('Canvas API error: 500 Internal Server Error');
+          error.status = 500;
+          throw error;
+        }
+        return 'success';
+      });
+
+      expect(result).toBe('success');
+      expect(attempts).toBe(2);
+    });
+
+    test('retries a network error that succeeds on the next attempt', async () => {
+      limiter._delay = () => Promise.resolve();
+
+      let attempts = 0;
+      const result = await limiter.execute(async () => {
+        attempts++;
+        if (attempts === 1) {
+          throw new TypeError('Failed to fetch');
+        }
+        return 'success';
+      });
+
+      expect(result).toBe('success');
+      expect(attempts).toBe(2);
+    });
+
+    test('does not retry 404 errors', async () => {
+      let attempts = 0;
+      await expect(
+        limiter.execute(async () => {
+          attempts++;
+          const error = new Error('Canvas API error: 404 Not Found');
+          error.status = 404;
+          throw error;
+        })
+      ).rejects.toThrow('404 Not Found');
+
+      expect(attempts).toBe(1);
+    });
+
+    test('rejects after the transient retry budget is exhausted', async () => {
+      limiter._delay = () => Promise.resolve();
+
+      let attempts = 0;
+      await expect(
+        limiter.execute(async () => {
+          attempts++;
+          const error = new Error('Canvas API error: 503 Service Unavailable');
+          error.status = 503;
+          throw error;
+        })
+      ).rejects.toThrow('503 Service Unavailable');
+
+      // 1 initial + 2 transient retries
+      expect(attempts).toBe(3);
+    });
+
+    test('backs off with the shared exponential schedule', async () => {
+      const delays = [];
+      limiter._delay = (ms) => { delays.push(ms); return Promise.resolve(); };
+
+      await expect(
+        limiter.execute(async () => {
+          throw new TypeError('Failed to fetch');
+        })
+      ).rejects.toThrow('Failed to fetch');
+
+      // _calculateBackoff(0) and _calculateBackoff(1): ~1s then ~2s, ±20% jitter
+      expect(delays).toHaveLength(2);
+      expect(delays[0]).toBeGreaterThanOrEqual(800);
+      expect(delays[0]).toBeLessThanOrEqual(1200);
+      expect(delays[1]).toBeGreaterThanOrEqual(1600);
+      expect(delays[1]).toBeLessThanOrEqual(2400);
+    });
+
+    test('keeps the transient and rate-limit budgets independent', async () => {
+      limiter._delay = () => Promise.resolve();
+
+      let attempts = 0;
+      const result = await limiter.execute(async () => {
+        attempts++;
+        // Two transient failures, then a rate-limit 403, then success. The 403
+        // must not be charged against the exhausted transient budget.
+        if (attempts <= 2) {
+          const error = new Error('Canvas API error: 502 Bad Gateway');
+          error.status = 502;
+          throw error;
+        }
+        if (attempts === 3) {
+          const error = new Error('Rate limit exceeded');
+          error.status = 403;
+          throw error;
+        }
+        return 'success';
+      });
+
+      expect(result).toBe('success');
+      expect(attempts).toBe(4);
+    });
+
+    test('continues with queued requests after a transient failure exhausts', async () => {
+      limiter._delay = () => Promise.resolve();
+
+      const failing = limiter.execute(async () => {
+        const error = new Error('Canvas API error: 500 Internal Server Error');
+        error.status = 500;
+        throw error;
+      });
+      const following = limiter.execute(async () => 'queued-result');
+
+      await expect(failing).rejects.toThrow('500 Internal Server Error');
+      await expect(following).resolves.toBe('queued-result');
+      expect(limiter.processing).toBe(false);
     });
   });
 });
