@@ -1,6 +1,7 @@
-import { describe, test, expect, beforeEach } from '@jest/globals';
+import { describe, test, expect, beforeEach, jest } from '@jest/globals';
+import '../src/utils/request-timing.js';
 import '../src/api/canvas-rate-limiter.js';
-const { CanvasRateLimiter } = globalThis;
+const { CanvasRateLimiter, RequestTimings } = globalThis;
 
 describe('CanvasRateLimiter', () => {
   let limiter;
@@ -478,6 +479,58 @@ describe('CanvasRateLimiter', () => {
       await expect(failing).rejects.toThrow('500 Internal Server Error');
       await expect(following).resolves.toBe('queued-result');
       expect(limiter.processing).toBe(false);
+    });
+  });
+
+  // Issue #61: time the limiter spends deliberately not sending a request is
+  // not time Canvas spent responding, so it is recorded separately.
+  describe('throttle accounting', () => {
+    test('works without a timings sink attached', async () => {
+      const limiter = new CanvasRateLimiter();
+      limiter._delay = jest.fn(async () => {});
+      await expect(limiter.execute(async () => 'ok')).resolves.toBe('ok');
+    });
+
+    test('records a pre-request throttle delay as waiting, not requesting', async () => {
+      const timings = new RequestTimings({ label: 'Canvas' });
+      const limiter = new CanvasRateLimiter(timings);
+      limiter._delay = jest.fn(async () => {});
+      // Empty bucket: the limiter must wait for a refill before sending.
+      limiter.bucket = 0;
+      limiter.lastCheck = Date.now();
+
+      await limiter.execute(async () => 'ok');
+
+      const summary = timings.summary();
+      expect(summary.requests).toBe(0);
+      expect(summary.waits[0].reason).toBe('canvas_throttle');
+      expect(summary.waits[0].totalMs).toBeGreaterThan(0);
+    });
+
+    test('records rate-limit backoff separately from transient backoff', async () => {
+      const timings = new RequestTimings({ label: 'Canvas' });
+      const limiter = new CanvasRateLimiter(timings);
+      limiter._delay = jest.fn(async () => {});
+
+      let attempt = 0;
+      await limiter.execute(async () => {
+        attempt++;
+        if (attempt === 1) {
+          const error = new Error('403 Forbidden - rate limit exceeded');
+          error.status = 403;
+          throw error;
+        }
+        if (attempt === 2) {
+          const error = new Error('Canvas API error: 502');
+          error.status = 502;
+          throw error;
+        }
+        return 'ok';
+      });
+
+      const reasons = timings.summary().waits.map(row => row.reason);
+      expect(reasons).toContain('canvas_rate_limit_backoff');
+      expect(reasons).toContain('canvas_transient_backoff');
     });
   });
 });

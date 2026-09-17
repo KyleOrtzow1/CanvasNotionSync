@@ -1,5 +1,5 @@
 // Canvas-Notion Sync: API-Only Assignment Extractor
-/* global CanvasRateLimiter, CanvasValidator, getUserFriendlyCanvasError, Debug, CANVAS_HOST_RE */
+/* global CanvasRateLimiter, CanvasValidator, getUserFriendlyCanvasError, Debug, CANVAS_HOST_RE, RequestTimings */
 
 // Prevent multiple initialization
 if (!window.canvasNotionExtractorLoaded) {
@@ -19,7 +19,12 @@ class CanvasAPIExtractor {
     this.canvasToken = null;
     this.baseURL = null;
     this.forceRefresh = false;
-    this.rateLimiter = new CanvasRateLimiter();
+    // Per-request timing for this extraction (see #61). Diagnostics only, so a
+    // context where the module didn't load still extracts normally.
+    this.timings = typeof RequestTimings === 'function'
+      ? new RequestTimings({ label: 'Canvas' })
+      : null;
+    this.rateLimiter = new CanvasRateLimiter(this.timings);
     this.parallelBatchSize = 3;
     this.parallelBatchDelayMs = 500;
     this.extractionProgressIntervalMs = 300;
@@ -80,9 +85,27 @@ class CanvasAPIExtractor {
       throw new Error('Canvas instance not detected');
     }
 
+    // Each extraction gets its own timing window, so the summary describes this
+    // sync rather than everything since the page loaded.
+    this.timings?.reset();
+
     try {
-      return await this.extractWithAPIToken();
+      const result = await this.extractWithAPIToken();
+
+      // Logged here (the Canvas requests happen in this context) and handed back
+      // so the service worker can fold it into the end-of-sync summary. An
+      // extraction served entirely from cache made no requests and adds nothing.
+      if (!this.timings || this.timings.isEmpty()) return result;
+
+      const timings = this.timings.summary();
+      RequestTimings.logSummary(timings);
+
+      return { ...result, timings };
     } catch (error) {
+      // A failed extraction is exactly when the timings are worth having.
+      if (this.timings && !this.timings.isEmpty()) {
+        RequestTimings.logSummary(this.timings.summary());
+      }
       // Only the error path writes a terminal sync_progress state here. The success
       // path deliberately leaves sync_progress alone: handleBackgroundSync writes
       // phase: 'complete' itself once the whole sync (extraction + Notion write)
@@ -550,32 +573,55 @@ class CanvasAPIExtractor {
       };
     })();
 
-    const response = await safeFetch(urlString, {
-      method: 'GET',
-      headers: headers,
-      credentials: 'include'
+    // One timing entry per attempt, including the failures — a request that
+    // 403s still spent the time and the bucket units (see #61).
+    const startedAt = Date.now();
+    let rateLimit = null;
+
+    try {
+      const response = await safeFetch(urlString, {
+        method: 'GET',
+        headers: headers,
+        credentials: 'include'
+      });
+
+      // Update rate limiter bucket from response headers
+      rateLimit = this.rateLimiter.updateFromHeaders(response.headers);
+
+      if (response.status === 403) {
+        const errorText = await response.text();
+        const error = new Error(`Canvas API error: 403 Forbidden - ${errorText}`);
+        error.status = 403;
+        throw error;
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        const error = new Error(`Canvas API error: ${response.status} ${response.statusText} - ${errorText}`);
+        error.status = response.status;
+        throw error;
+      }
+
+      const data = await response.json();
+      const links = this.parseLinkHeader(response.headers.get('Link'));
+      this._recordRequestTiming(urlString, startedAt, response.status, rateLimit);
+      return { data, links };
+    } catch (error) {
+      this._recordRequestTiming(urlString, startedAt, error?.status, rateLimit, true);
+      throw error;
+    }
+  }
+
+  _recordRequestTiming(urlString, startedAt, status, rateLimit, failed = false) {
+    if (!this.timings) return;
+    this.timings.record({
+      url: urlString,
+      durationMs: Date.now() - startedAt,
+      status: status,
+      failed: failed,
+      cost: rateLimit?.cost,
+      remaining: rateLimit?.remaining
     });
-
-    // Update rate limiter bucket from response headers
-    this.rateLimiter.updateFromHeaders(response.headers);
-
-    if (response.status === 403) {
-      const errorText = await response.text();
-      const error = new Error(`Canvas API error: 403 Forbidden - ${errorText}`);
-      error.status = 403;
-      throw error;
-    }
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      const error = new Error(`Canvas API error: ${response.status} ${response.statusText} - ${errorText}`);
-      error.status = response.status;
-      throw error;
-    }
-
-    const data = await response.json();
-    const linkHeader = response.headers.get('Link');
-    return { data, links: this.parseLinkHeader(linkHeader) };
   }
 
   async makeAPICall(endpoint, params = {}, maxPages = 10) {

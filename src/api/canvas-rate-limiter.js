@@ -4,7 +4,14 @@
 /* global Debug */
 
 class CanvasRateLimiter {
-  constructor() {
+  /**
+   * @param {Object} [timings] - optional RequestTimings sink (see #61). Time
+   *   spent throttled here is not time spent waiting on Canvas, so it is
+   *   recorded separately from the request durations themselves.
+   */
+  constructor(timings = null) {
+    this.timings = timings;
+
     // Leaky bucket parameters matching Canvas's model
     this.bucketCapacity = 700;
     this.bucket = 700;           // Start full; self-corrects after first response
@@ -51,6 +58,7 @@ class CanvasRateLimiter {
       // Adaptive pre-request delay
       const delay = this._calculateDelay(this.defaultEstimatedCost);
       if (delay > 0) {
+        this._recordWait('canvas_throttle', delay);
         await this._delay(delay);
         this._refillBucket();
       }
@@ -66,6 +74,7 @@ class CanvasRateLimiter {
               `Canvas rate limited (403), attempt ${attempt + 1}/${this.maxRetries}, ` +
               `waiting ${backoffDelay}ms before retry`
             );
+            this._recordWait('canvas_rate_limit_backoff', backoffDelay);
             await this._delay(backoffDelay);
             this.requestQueue.unshift({
               requestFunction, resolve, reject, attempt: attempt + 1, transientAttempt
@@ -82,6 +91,7 @@ class CanvasRateLimiter {
               `attempt ${transientAttempt + 1}/${this.maxTransientRetries}, ` +
               `waiting ${backoffDelay}ms before retry`
             );
+            this._recordWait('canvas_transient_backoff', backoffDelay);
             await this._delay(backoffDelay);
             this.requestQueue.unshift({
               requestFunction, resolve, reject, attempt, transientAttempt: transientAttempt + 1
@@ -216,6 +226,14 @@ class CanvasRateLimiter {
       cost: parseFloat(costStr),
       remaining: parseFloat(remainingStr)
     };
+  }
+
+  // Attribute a deliberate wait to the sync's timing summary when one is
+  // attached. Optional by design: the limiter works the same without it.
+  _recordWait(reason, ms) {
+    if (this.timings && typeof this.timings.recordWait === 'function') {
+      this.timings.recordWait(reason, ms);
+    }
   }
 
   _delay(ms) {

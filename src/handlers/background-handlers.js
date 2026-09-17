@@ -16,6 +16,8 @@ import '../utils/sync-logger.js';
 const { SyncLogger } = globalThis;
 import '../utils/canvas-hosts.js';
 const { CANVAS_TAB_PATTERNS } = globalThis;
+import '../utils/request-timing.js';
+const { RequestTimings } = globalThis;
 import { checkStorageQuota, cleanupOldCache } from '../utils/storage-monitor.js';
 import { analytics, categorizeError, syncCounts } from '../utils/analytics.js';
 
@@ -129,7 +131,7 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
       try {
         await chrome.scripting.executeScript({
           target: { tabId: activeTab.id },
-          files: ['src/utils/debug.js', 'src/utils/error-messages.js', 'src/utils/canvas-hosts.js', 'src/validators/canvas-validator.js', 'src/api/canvas-rate-limiter.js', 'content-script.js']
+          files: ['src/utils/debug.js', 'src/utils/error-messages.js', 'src/utils/canvas-hosts.js', 'src/utils/request-timing.js', 'src/validators/canvas-validator.js', 'src/api/canvas-rate-limiter.js', 'content-script.js']
         });
         
         // Wait for script to initialize
@@ -162,6 +164,11 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
     if (!response || !response.success) {
       throw new Error(response?.error || 'Failed to extract assignments from Canvas');
     }
+
+    // Canvas requests are made in the content script, so its per-endpoint
+    // timings arrive as a snapshot on the extraction response. Log them here so
+    // one sync's diagnostics cover both APIs (see #61).
+    if (response.timings) RequestTimings?.logSummary(response.timings);
 
     if (response.assignments.length === 0) {
       await chrome.storage.local.set({

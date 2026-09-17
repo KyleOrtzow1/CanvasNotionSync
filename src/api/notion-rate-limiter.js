@@ -3,7 +3,13 @@ const { Debug } = globalThis;
 
 // Optimized Rate limiter for Notion API with burst support
 export class NotionRateLimiter {
-  constructor() {
+  /**
+   * @param {Object} [timings] - optional RequestTimings sink (see #61). Time
+   *   spent throttled here is not time spent waiting on Notion, so it is
+   *   recorded separately from the request durations themselves.
+   */
+  constructor(timings = null) {
+    this.timings = timings;
     this.requestQueue = [];
     this.processing = false;
     this.requestTimes = []; // Track request timestamps for sliding window
@@ -58,7 +64,9 @@ export class NotionRateLimiter {
       }
 
       if (!canMakeRequest && delay > 0) {
-        await this.delay(Math.min(delay, 20)); // Much shorter delay cap
+        const throttleDelay = Math.min(delay, 20); // Much shorter delay cap
+        this._recordWait('notion_throttle', throttleDelay);
+        await this.delay(throttleDelay);
         continue;
       }
 
@@ -88,6 +96,7 @@ export class NotionRateLimiter {
               `Notion rate limited (429), attempt ${nextAttempt}/${this.maxRetries}, ` +
               `waiting ${backoffDelay}ms before retry`
             );
+            this._recordWait('notion_rate_limit_backoff', backoffDelay);
             await this.delay(backoffDelay);
             this.requestQueue.unshift({
               requestFunction, resolve, reject, attempt: nextAttempt
@@ -116,6 +125,14 @@ export class NotionRateLimiter {
     const exponentialDelay = Math.min(Math.pow(2, attempt) * 1000, this.maxRetryDelay);
     const retryAfterDelay = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 0;
     return Math.max(exponentialDelay, retryAfterDelay);
+  }
+
+  // Attribute a deliberate wait to the sync's timing summary when one is
+  // attached. Optional by design: the limiter works the same without it.
+  _recordWait(reason, ms) {
+    if (this.timings && typeof this.timings.recordWait === 'function') {
+      this.timings.recordWait(reason, ms);
+    }
   }
 
   delay(ms) {
