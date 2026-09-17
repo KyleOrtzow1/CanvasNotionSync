@@ -224,6 +224,114 @@ describe('sync event ownership', () => {
   });
 });
 
+// The funnel reads installation -> token saved -> setup completed -> error-free
+// sync, so the milestone a sync verifies has to be reported ahead of that sync's
+// own completion, on every path and without depending on request arrival order.
+describe('setup milestone ordering', () => {
+  const order = () => track.mock.calls.map(([name]) => name);
+
+  test.each([
+    ['popup parent sync', () => handleBackgroundSync(null)],
+    ['periodic parent sync', () => handleBackgroundSync(null, { source: 'periodic' })],
+    ['setup parent sync', () => handleBackgroundSync(null, { source: 'setup' })],
+    ['owned legacy sync', () => handleAssignmentSync([{ title: 'private assignment' }])]
+  ])('%s reports the verified setup before the completion that verified it', async (_label, run) => {
+    await run();
+
+    const names = order();
+    expect(names.filter(name => name === 'setup_completed')).toHaveLength(1);
+    expect(names.indexOf('setup_completed')).toBeLessThan(names.indexOf('sync_completed'));
+  });
+
+  test('a delayed credential read cannot let the completion overtake the milestone', async () => {
+    CredentialManager.getCredentials.mockImplementation(async () => {
+      await new Promise(resolve => setTimeout(resolve, 20));
+      return { ...credentials };
+    });
+
+    await handleBackgroundSync(null);
+
+    const names = order();
+    expect(names.indexOf('setup_completed')).toBeLessThan(names.indexOf('sync_completed'));
+  });
+
+  test.each([
+    ['rotated', { ...credentials, notionToken: 'ntn_rotated' }],
+    ['pointed at another database', { ...credentials, notionDatabaseId: 'other-db' }],
+    ['cleared', {}]
+  ])('credentials %s during the sync are not reported as a verified setup', async (_label, saved) => {
+    syncAssignments.mockImplementationOnce(async () => {
+      CredentialManager.getCredentials.mockResolvedValue(saved);
+      return { created: [{ id: 'private-page' }], updated: [], skipped: [], deleted: [], errors: [] };
+    });
+
+    await handleBackgroundSync(null);
+
+    expect(order()).not.toContain('setup_completed');
+    expect(track).toHaveBeenCalledWith('sync_completed', expect.objectContaining({ created: 1, errors: 0 }));
+  });
+
+  test.each([
+    ['processed nothing', { created: [], updated: [], skipped: [], deleted: [], errors: [] }],
+    ['had an item failure', { created: [{}], updated: [], skipped: [], deleted: [], errors: [{ error: 'private URL' }] }],
+    ['had a deletion failure', { created: [], updated: [], skipped: [{}], deleted: [], errors: [{ error: 'private page' }] }]
+  ])('a sync that %s does not establish setup', async (_label, results) => {
+    syncAssignments.mockResolvedValue(results);
+
+    await handleBackgroundSync(null);
+
+    expect(order()).not.toContain('setup_completed');
+    expect(track).toHaveBeenCalledWith('sync_completed', expect.objectContaining({ source: 'popup' }));
+  });
+
+  test('a sync with no assignments to process does not establish setup', async () => {
+    syncAssignments.mockResolvedValue({ created: [], updated: [], skipped: [], deleted: [], errors: [] });
+
+    await handleAssignmentSync([]);
+
+    expect(order()).not.toContain('setup_completed');
+    expect(track).toHaveBeenCalledWith('sync_completed', expect.objectContaining({ source: 'canvas_page' }));
+  });
+
+  test.each([
+    ['unchanged assignments', { created: [], updated: [], skipped: [{}, {}], deleted: [], errors: [] }],
+    ['only deletions', { created: [], updated: [], skipped: [], deleted: [{}], errors: [] }]
+  ])('an error-free sync of %s still establishes setup', async (_label, results) => {
+    syncAssignments.mockResolvedValue(results);
+
+    await handleBackgroundSync(null);
+
+    expect(order()).toContain('setup_completed');
+  });
+
+  test('delivered payloads are stamped in tracking order and the milestone is sent once', async () => {
+    track.mockRestore();
+    const configured = { measurementId: 'G-TEST123456', apiSecret: 'test-write-secret', debug: false };
+    const original = analytics.config;
+    analytics.config = configured;
+    globalThis.fetch = jest.fn(async () => ({ ok: true }));
+    const sent = () => fetch.mock.calls.map(([, init]) => JSON.parse(init.body));
+    const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+
+    try {
+      await handleBackgroundSync(null);
+      await settle();
+      const payloads = sent();
+      expect(payloads.map(payload => payload.events[0].name))
+        .toEqual(['sync_started', 'setup_completed', 'sync_completed']);
+      expect(payloads[1].timestamp_micros).toBeLessThan(payloads[2].timestamp_micros);
+      expect(JSON.stringify(payloads)).not.toMatch(/private|ntn_/);
+
+      fetch.mockClear();
+      await handleBackgroundSync(null);
+      await settle();
+      expect(sent().map(payload => payload.events[0].name)).toEqual(['sync_started', 'sync_completed']);
+    } finally {
+      analytics.config = original;
+    }
+  });
+});
+
 describe('setup, UI boundary and clearing', () => {
   test('setup completion follows successful verification of the saved configuration', async () => {
     await send({ action: 'TEST_NOTION_CONNECTION', token: credentials.notionToken, databaseId: credentials.notionDatabaseId });
@@ -241,7 +349,8 @@ describe('setup, UI boundary and clearing', () => {
     expect(track).not.toHaveBeenCalledWith('setup_completed');
     CredentialManager.getCredentials.mockResolvedValue(credentials);
     await send({ action: 'STORE_CREDENTIALS', ...credentials });
-    await Promise.resolve();
+    // The save responds before the milestone's credential comparison resolves.
+    await new Promise(resolve => setTimeout(resolve, 0));
     expect(track).toHaveBeenCalledWith('setup_completed');
     expect(track).toHaveBeenCalledWith('notion_token_saved');
   });
