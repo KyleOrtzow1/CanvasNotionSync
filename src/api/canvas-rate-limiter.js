@@ -18,6 +18,10 @@ class CanvasRateLimiter {
 
     // Retry configuration
     this.maxRetries = 5;
+    // Transient failures (5xx, dropped connections) get their own, shorter budget:
+    // an endpoint that is genuinely down should fail fast rather than spend the
+    // full rate-limit backoff ladder on every assignment in the sync.
+    this.maxTransientRetries = 2;
 
     // Adaptive throttling thresholds
     this.lowBucketThreshold = 100;
@@ -26,7 +30,9 @@ class CanvasRateLimiter {
 
   async execute(requestFunction) {
     return new Promise((resolve, reject) => {
-      this.requestQueue.push({ requestFunction, resolve, reject, attempt: 0 });
+      this.requestQueue.push({
+        requestFunction, resolve, reject, attempt: 0, transientAttempt: 0
+      });
       this.processQueue();
     });
   }
@@ -37,7 +43,7 @@ class CanvasRateLimiter {
 
     while (this.requestQueue.length > 0) {
       const item = this.requestQueue.shift();
-      const { requestFunction, resolve, reject, attempt } = item;
+      const { requestFunction, resolve, reject, attempt, transientAttempt = 0 } = item;
 
       // Refill bucket based on elapsed time
       this._refillBucket();
@@ -62,10 +68,29 @@ class CanvasRateLimiter {
             );
             await this._delay(backoffDelay);
             this.requestQueue.unshift({
-              requestFunction, resolve, reject, attempt: attempt + 1
+              requestFunction, resolve, reject, attempt: attempt + 1, transientAttempt
             });
           } else {
             Debug.error('Canvas rate limiter: max retries reached (5 attempts)');
+            reject(error);
+          }
+        } else if (this._isTransientError(error)) {
+          if (transientAttempt < this.maxTransientRetries) {
+            const backoffDelay = this._calculateBackoff(transientAttempt);
+            Debug.log(
+              `Canvas request failed transiently (${this._describeFailure(error)}), ` +
+              `attempt ${transientAttempt + 1}/${this.maxTransientRetries}, ` +
+              `waiting ${backoffDelay}ms before retry`
+            );
+            await this._delay(backoffDelay);
+            this.requestQueue.unshift({
+              requestFunction, resolve, reject, attempt, transientAttempt: transientAttempt + 1
+            });
+          } else {
+            Debug.error(
+              `Canvas rate limiter: transient failure persisted after ` +
+              `${this.maxTransientRetries} retries (${this._describeFailure(error)})`
+            );
             reject(error);
           }
         } else {
@@ -116,6 +141,47 @@ class CanvasRateLimiter {
       return message.includes('rate') || message.includes('throttl') || message.includes('limit');
     }
     return false;
+  }
+
+  // Transient: worth trying again because the request never got a usable answer.
+  // A Canvas 5xx, a 502 from a proxy in front of it, or a connection that died
+  // before any response arrived. Everything else (401, 404, a permission 403)
+  // means Canvas answered, and answered the same way every time.
+  _isTransientError(error) {
+    if (!error) return false;
+
+    if (typeof error.status === 'number') {
+      return error.status >= 500 && error.status < 600;
+    }
+
+    // No HTTP status: fetch() rejected without producing a response.
+    return this._isNetworkError(error);
+  }
+
+  _isNetworkError(error) {
+    // A deliberate cancellation is not a failure to retry.
+    if (error.name === 'AbortError') return false;
+
+    // Match the known shapes of a failed fetch rather than any error without a
+    // status, so a programming bug (a TypeError from our own code) still fails
+    // immediately instead of being retried three times.
+    const message = (error.message || '').toLowerCase();
+    return message.includes('failed to fetch') ||        // Chrome
+           message.includes('networkerror') ||           // Firefox
+           message.includes('network error') ||
+           message.includes('network request failed') ||
+           message.includes('load failed') ||            // Safari
+           message.includes('network connection') ||
+           message.includes('connection refused') ||
+           message.includes('connection reset') ||
+           message.includes('connection closed') ||
+           message.includes('net::err_');                // net::ERR_* surfaced by Chrome
+  }
+
+  _describeFailure(error) {
+    return typeof error.status === 'number'
+      ? `HTTP ${error.status}`
+      : 'network error';
   }
 
   _calculateBackoff(attempt) {
