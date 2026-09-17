@@ -120,43 +120,195 @@ Event count by Event name separately from active-user counts and DebugView.
 
 ## Reporting setup
 
-Register event-scoped dimensions for `source`, `outcome`, `category`, `reason`,
-`setting`, `extension_version`; numeric metrics for `created`, `updated`,
-`skipped`, `deleted`, `errors`, `duration_ms` (milliseconds). Mark `setup_completed`
-as a key event. Create these explorations in the production property:
+This is an event-only Measurement Protocol implementation. Production sends no
+`engagement_time_msec`, no `session_start`, and no `user_engagement`, so GA
+derives **zero active users** from it. `Active users` counts users with an
+engaged session, and nothing here produces one. Every report below therefore
+uses **`Total users`**, which counts distinct `client_id` values regardless of
+engagement. Any report, exploration, or Realtime card whose metric is
+`Active users` renders empty by construction, not because events are missing.
+Do not add `engagement_time_msec` to production builds to make GA's default
+metrics populate: sync runtime is not user engagement, and reporting it as such
+would be a fabricated number in every engagement metric the property exposes.
+The synthetic value stays a debug-build DebugView aid.
 
-1. Setup: install → saved token → completed setup → completed sync with zero
-   errors. Tests/preparation are optional steps, not required funnel stages.
-   Existing upgrading installations form a separate cohort.
-2. Reliability: terminal outcomes by source/version, partial-error completions,
-   and mean duration. Denominator: terminal events actually received; display
-   skipped reasons separately.
-3. Usage: participating installation IDs with UI/manual-sync/settings events.
-   These are installations, not people. Opt-out, reinstalls, and ID resets affect
-   coverage and continuity.
+`Total users` means **observed installation identities**, not people: one Chrome
+profile that has not opted out. One person with two profiles counts twice; a
+reinstall that regenerates the ID counts twice; an opted-out installation counts
+zero. Clear All Data keeps the ID, so it does not split an identity.
 
-## Production reporting configured September 10, 2026
+### Custom definitions to register
+
+Registered under Admin → Custom definitions, event-scoped. Names must match the
+payload parameters exactly; `test/analytics-reporting.test.js` checks this table
+against the event schema in `src/utils/analytics.js`.
+
+| Parameter | Registered as | Values |
+| --- | --- | --- |
+| `source` | Dimension | `popup`, `canvas_page`, `periodic`, `setup` |
+| `outcome` | Dimension | `success`, `failure` |
+| `category` | Dimension | `authentication`, `permission`, `not_found`, `rate_limit`, `server`, `network`, `configuration`, `no_canvas_tab`, `in_progress`, `integration`, `schema`, `unknown` |
+| `reason` | Dimension | `no_canvas_tab`, `in_progress`, `configuration` |
+| `setting` | Dimension | `canvas_token`, `notion_token`, `notion_database`, `debug_mode` |
+| `extension_version` | Dimension | Manifest version; present on every event |
+| `created` | Metric | Standard unit |
+| `updated` | Metric | Standard unit |
+| `skipped` | Metric | Standard unit |
+| `deleted` | Metric | Standard unit |
+| `errors` | Metric | Standard unit |
+| `duration_ms` | Metric | Milliseconds |
+
+Mark `setup_completed` as a key event. Custom definitions are not retroactive:
+they apply to data received after registration, and GA reports earlier events as
+`(not set)` or zero. That is a registration artifact, not evidence that the
+payload omitted the field.
+
+### 1. Usage — installations
+
+Free-form exploration, rows `Event name`, values **`Total users` and
+`Event count`**. Event count alone answers "how much did this happen", not "how
+many installations did it". Both columns are needed, and the `Total users`
+column must be labelled *observed installation identities*, not users or people.
+
+Break down by `extension_version` to separate versions, and restrict to the UI
+events (`popup_opened`, `manual_sync_clicked`, `settings_changed`) for a
+participating-installation view. Opt-out, reinstalls, and ID resets affect
+coverage and continuity in both columns.
+
+### 2. Onboarding — installation cohorts instead of a funnel
+
+**Funnel explorations do not work against this property.** A funnel exploration
+reports its steps with GA's engagement-based user metric, which is structurally
+zero here, so the visualization renders no data even while the builder's
+matching-users summary counts a nonzero cohort — the discrepancy observed on
+September 14, 2026 (empty funnel, 9 matching users for Aug 15 – Sep 13). Metric
+compatibility is the leading explanation and is confirmed in the property, not
+here; the check is in [What still needs a human](#what-still-needs-a-human).
+Either way, treat funnel semantics as unsupported for this implementation rather
+than as a broken report to fix.
+
+The supported equivalent is a free-form exploration with `Total users` and four
+**cumulative user-scoped segments**, applied as segment comparisons:
+
+| Segment | Conditions (user scope, each adds to the previous) |
+| --- | --- |
+| 1. New installation | Event name = `extension_installed` |
+| 2. Token saved | ...and event name = `notion_token_saved` |
+| 3. Setup completed | ...and event name = `setup_completed` |
+| 4. Error-free sync | ...and event name = `sync_completed` **and** `errors` = 0, with the condition group scoped to *within the same event* |
+
+Each segment is a subset of the one before it, so `Total users` per segment is
+monotonically decreasing and step-to-step ratios are defensible conversion
+within the cohort. Upgrading installations are excluded automatically: they send
+`extension_updated`, not `extension_installed`. Report them separately with a
+fifth segment (`extension_updated` and not `extension_installed`) rather than
+mixing them into the same denominator.
+
+Two deliberate choices:
+
+- **The conditions are not sequenced.** They ask whether an installation reached
+  each stage, not whether it reached them in order. Milestone events fire once
+  per identity, so ordering adds nothing to the counts today, and GA orders
+  events by receipt — which [#70](../../issues/70) leaves nondeterministic for
+  the sync that verifies setup. Once #70 lands, the same
+  four conditions can be rebuilt as a sequence segment ("indirectly followed
+  by") to measure ordered progression; until then a sequence would undercount
+  step 4.
+- **The `errors = 0` condition uses the registered metric.** If a numeric
+  condition on a custom metric proves unusable in the segment builder, use the
+  categorical completion field added by [#72](../../issues/72) instead. Do not
+  substitute "any `sync_completed`": that counts partial-error syncs as
+  successful setup.
+
+An installation from before analytics shipped has no `extension_installed`
+event and is absent from the cohort entirely. Because the segments are
+cumulative, that undercounts step 1 rather than producing a step larger than
+its predecessor.
+
+### 3. Reliability — completions, failures, and skips
+
+Four distinct populations. Keep them in separate rows; none of them is the
+denominator of another.
+
+| Population | Definition |
+| --- | --- |
+| Error-free completion | `sync_completed` with `errors` = 0 |
+| Partial-error completion | `sync_completed` with `errors` > 0 |
+| Fatal failure | `sync_failed`, broken down by `category` and `source` |
+| Sampled preflight skip | `auto_sync_skipped`, at most once per reason per 24 hours |
+
+Split the two completion rows with an Explore metric filter on `errors`, and
+never label `sync_completed` as "successful syncs" — the event covers zero-work
+and partial-error outcomes alike. `auto_sync_skipped` is throttled per reason
+per identity, so it is a presence signal, not a count of skipped ticks; it must
+stay out of any rate calculated over sync attempts.
+
+GA sums `duration_ms`. Mean duration is that sum divided by the event count of
+the same row; there is no average metric for a custom metric. The same holds
+for `created`, `updated`, `skipped`, `deleted`, and `errors`.
+
+### Arithmetic that does not hold
+
+- **Installs ÷ setup completions is not a conversion rate.** The standard
+  reports' 23 installation events and 15 `setup_completed` events cover
+  different cohorts over the same window: `setup_completed` fires once per
+  identity and can come from an installation that predates the window, and an
+  installation in the window may complete setup after it. Use the cumulative
+  segments above.
+- **Summed `errors` is not a count of failed syncs.** 7,375 item-error
+  occurrences across 125 completions is a sum of a per-event metric. Occurrences,
+  affected syncs, and affected installation identities are three different
+  numbers; [#72](../../issues/72) is what makes the second one reportable.
+- **Event count is not installations.** Read it beside `Total users`, never
+  instead of it.
+- **Started and terminal events do not reconcile.** Delivery is best effort, so
+  `sync_started` minus `sync_completed` is not a failure count.
+- **Zero active users and zero engagement are expected**, in both Realtime and
+  the standard reports, and say nothing about whether events arrived.
+
+## Production reporting as inspected September 14, 2026
 
 Property `553519881` uses web stream `G-4MYV1NB8TW`. Event and user retention
 are 14 months, with reset on new user activity enabled. Ads personalization is
-disabled in all regions. The six dimensions and six metrics above are registered,
-and `setup_completed` is marked as a key event.
+disabled in all regions. The twelve custom definitions above are registered, and
+`setup_completed` is marked as a key event. Use the development property for
+tests; the production internal-traffic filter remains in Testing and does not
+exclude developer activity.
 
-The saved **Extension usage and reliability** exploration contains usage,
-terminal outcomes, failure categories, sampled skip reasons, a new-installation
-setup funnel, and completed-sync workload tabs. `Total users` represents observed
-installation identities, not people. `Sync duration` is a sum; divide it by event
-count within a terminal-event row to obtain mean duration once the new metric has
-populated. Item-error totals are not the number of partially failed syncs.
-The closed setup funnel requires installation, token saved, setup completed, and
-then `sync_completed` with `errors = 0`; existing upgrading installations are not
-its target cohort. Custom definitions need new data after registration; historical
-`(not set)` values and zero custom metrics do not establish missing payload fields.
-Use the development property for tests; the production internal-traffic filter
-remains in Testing and does not exclude developer activity.
+The saved **Extension usage and reliability** exploration needs three
+corrections, none of which can be made from this repository:
 
-The local privacy policy now reflects this retention preference. Publish that
+1. **Usage – installations** carries only `Event count` in Values. Add
+   `Total users` and label it as observed installation identities.
+2. **Setup – new installations** is a funnel exploration and renders no data.
+   Replace it with the cumulative-segment table in *Onboarding* above; keep the
+   funnel tab only if the diagnosis below fails.
+3. **Reliability** does not separate error-free from partial-error completions.
+   Apply the `errors` split and keep fatal failures and sampled skips in their
+   own rows.
+
+The local privacy policy reflects the retention preference above. Publish that
 updated policy through the normal release process.
+
+### What still needs a human
+
+Nothing in this section is code. All of it needs someone with access to GA
+property `553519881` and the development property:
+
+- **Apply the three corrections** in the saved exploration.
+- **Confirm the funnel diagnosis before discarding the funnel tab.** Open its
+  builder, confirm the metric is GA's engagement-based user metric, then run the
+  step-4 conditions as a free-form `Total users` table over the identical date
+  range. A nonzero table beside an empty funnel confirms metric incompatibility.
+  A nonzero funnel would falsify the diagnosis; the segment table remains the
+  recommended report either way.
+- **Validate on the development property**, not production: a fresh profile
+  installing, saving a token, completing setup, and running one error-free
+  nonempty sync must appear in all four cumulative segments, and a sync with at
+  least one item error must appear in segments 1–3 only.
+- **Re-check after [#70](../../issues/70)** to switch the onboarding segments to
+  ordered sequence conditions, and after [#72](../../issues/72) to move the
+  reliability split onto its categorical fields.
 
 ## Validation
 
