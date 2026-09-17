@@ -1,8 +1,19 @@
 import { NotionValidator } from '../validators/notion-validator.js';
+import { notionSchemaCache, getSelectOptionNames } from '../cache/notion-schema-cache.js';
 import '../utils/debug.js';
 const { Debug } = globalThis;
 import '../utils/sync-logger.js';
 const { SyncLogger } = globalThis;
+
+// Select columns sync writes values into. Notion silently creates an option it
+// doesn't have, so an unexpected value grows the option list rather than
+// failing — these are checked against the real schema and reported instead.
+export const VALIDATED_SELECT_PROPERTIES = Object.freeze(['Status', 'Course']);
+
+// Upper bound on per-sync "unknown select option" warnings. SyncLogger keeps
+// only the last 100 entries; a database whose Status column was renamed would
+// otherwise push everything else out of the log.
+export const MAX_SELECT_WARNINGS_PER_SYNC = 20;
 
 // Ordering used to decide whether a manual Notion status edit represents
 // forward progress (preserve it) or a backward regression (Canvas wins).
@@ -69,15 +80,28 @@ export function resolvePreservedStatus(existingStatus, newStatus) {
 
 // Assignment synchronization logic with unified cache system
 export class AssignmentSyncer {
-  constructor(notionAPI, databaseId, assignmentCache = null) {
+  constructor(notionAPI, databaseId, assignmentCache = null, { schemaCache = notionSchemaCache } = {}) {
     this.notionAPI = notionAPI;
     this.databaseId = databaseId;
     this.assignmentCache = assignmentCache;
+    this.schemaCache = schemaCache;
     this.dataSourceId = null;
+    // The data source's `properties` map, read once per run (and at most once
+    // per TTL across runs) at initialize(). Null when it could not be read —
+    // every consumer degrades to today's unvalidated behaviour rather than
+    // failing the sync.
+    this.schema = null;
+    // Set once the schema has been looked at, successfully or not, so a failed
+    // read costs one request per run rather than one per consumer.
+    this.schemaLoaded = false;
     // Databases created before the Checkbox column existed (and hand-built
     // ones) don't have it. Writing an unknown property is a 400 that fails the
     // whole page write, so the column is only ever written when confirmed present.
     this.hasCompletionCheckbox = false;
+    // "property|value" pairs already reported this run, so a course name that
+    // isn't in the schema is logged once rather than once per assignment.
+    this.warnedSelectValues = new Set();
+    this.selectWarningCount = 0;
   }
 
   async initialize() {
@@ -92,6 +116,8 @@ export class AssignmentSyncer {
       // Use the first data source
       this.dataSourceId = database.data_sources[0].id;
 
+      // One read serves both the Checkbox detection and select validation.
+      await this.loadSchema();
       this.hasCompletionCheckbox = await this.detectCompletionCheckbox();
 
       return { success: true, dataSourceId: this.dataSourceId };
@@ -102,21 +128,94 @@ export class AssignmentSyncer {
   }
 
   /**
+   * The data source's property schema, from the cache when it's still fresh
+   * and from Notion otherwise. Read at most once per run: a failure (older API
+   * client without getDataSource, a request error) resolves to null and stays
+   * null for the run, so callers fall back to unvalidated behaviour instead of
+   * retrying a broken read or failing the sync.
+   * @returns {Promise<Object|null>} `properties` from the data source
+   */
+  async loadSchema() {
+    if (this.schemaLoaded) return this.schema;
+    this.schemaLoaded = true;
+
+    try {
+      if (typeof this.notionAPI.getDataSource !== 'function') return null;
+
+      this.schema = await this.schemaCache.getOrFetch(this.dataSourceId, async () => {
+        const dataSource = await this.notionAPI.getDataSource(this.dataSourceId);
+        return dataSource?.properties || null;
+      });
+    } catch (error) {
+      Debug.warn('Could not read database schema:', error.message);
+      this.schema = null;
+    }
+
+    return this.schema;
+  }
+
+  /**
    * Report whether the target database actually has a `Checkbox` checkbox
-   * column. Any failure (older API client without getDataSource, a request
-   * error) is treated as "absent" so sync never risks writing a property the
-   * database doesn't have.
+   * column, from the schema already loaded for this run where possible.
    * @returns {Promise<boolean>}
    */
   async detectCompletionCheckbox() {
-    try {
-      if (typeof this.notionAPI.getDataSource !== 'function') return false;
-      const dataSource = await this.notionAPI.getDataSource(this.dataSourceId);
-      return dataSource?.properties?.Checkbox?.type === 'checkbox';
-    } catch (error) {
-      Debug.warn('Could not read database schema for Checkbox column:', error.message);
-      return false;
+    const schema = await this.loadSchema();
+    return schema?.Checkbox?.type === 'checkbox';
+  }
+
+  /**
+   * Check the select values about to be written against the options the
+   * database actually has, and warn about any that Notion would have to create.
+   *
+   * Reporting only: the value is still written, because Notion accepts it and
+   * refusing would silently drop a real course or status. Each distinct
+   * property/value pair is reported once per sync, up to a fixed cap.
+   * @param {Object} properties - Notion properties about to be written
+   * @returns {Array<{property: string, value: string}>} values not in the schema
+   */
+  validateSelectValues(properties) {
+    if (!this.schema) return [];
+
+    // A Map, not properties[name], so the lookup can't be an object injection.
+    const observed = new Map([
+      ['Status', properties?.Status?.select?.name],
+      ['Course', properties?.Course?.select?.name]
+    ]);
+
+    const unknown = [];
+
+    for (const property of VALIDATED_SELECT_PROPERTIES) {
+      const value = observed.get(property);
+      if (typeof value !== 'string' || value === '') continue;
+
+      const options = getSelectOptionNames(this.schema, property);
+      // Absent column, or one that isn't a select: nothing to validate against.
+      if (!options || options.includes(value)) continue;
+
+      unknown.push({ property, value });
+
+      const warningKey = `${property}|${value}`;
+      if (this.warnedSelectValues.has(warningKey)) continue;
+      this.warnedSelectValues.add(warningKey);
+
+      if (this.selectWarningCount < MAX_SELECT_WARNINGS_PER_SYNC) {
+        this.selectWarningCount++;
+        const message =
+          `"${value}" is not an option on the ${property} column — Notion will add it. ` +
+          'Rename it in Notion if that is not what you want.';
+        Debug.warn(message);
+        SyncLogger.warn(message);
+      } else if (this.selectWarningCount === MAX_SELECT_WARNINGS_PER_SYNC) {
+        this.selectWarningCount++;
+        SyncLogger.warn(
+          `More select values are missing from the database schema; ` +
+          `only the first ${MAX_SELECT_WARNINGS_PER_SYNC} are listed.`
+        );
+      }
     }
+
+    return unknown;
   }
 
   /**
@@ -336,6 +435,10 @@ export class AssignmentSyncer {
       };
     }
 
+    // Every write goes through here, so this is the one place select values
+    // have to be checked against the schema.
+    this.validateSelectValues(properties);
+
     return properties;
   }
 
@@ -351,6 +454,11 @@ export class AssignmentSyncer {
     if (!this.dataSourceId) {
       await this.initialize();
     }
+
+    // Schema warnings are per-run: a value reported last sync is worth
+    // reporting again if it is still missing from the database.
+    this.warnedSelectValues.clear();
+    this.selectWarningCount = 0;
 
     Debug.log(`Starting unified cache sync for ${assignments.length} Canvas assignments`);
     SyncLogger.info(`Sync started for ${assignments.length} assignments`);
