@@ -166,6 +166,42 @@ describe('sync event ownership', () => {
     expect(track.mock.calls.some(([name]) => ['sync_failed', 'setup_completed'].includes(name))).toBe(false);
   });
 
+  test('a partial-error completion reports the syncer\'s outcome and keeps its bounded breakdown locally (#72)', async () => {
+    syncAssignments.mockResolvedValue({
+      created: [], updated: [{}], skipped: [], deleted: [], errors: [{ title: 'private assignment', error: 'private URL' }],
+      diagnostics: {
+        outcome: 'partial', itemsProcessed: 2, itemsSucceeded: 1, itemErrors: 1,
+        dominantCategory: 'network', categories: { network: 1 }, operations: { update: 1 },
+        combinations: { 'network:update': 1 }, suppressed: {}, suppressedErrors: 0
+      }
+    });
+
+    await handleBackgroundSync(null);
+
+    expect(track).toHaveBeenCalledWith('sync_completed', expect.objectContaining({
+      errors: 1, item_outcome: 'partial', item_error_category: 'network'
+    }));
+    expect(data.sync_error_stats.lastSyncDiagnostics).toMatchObject({ outcome: 'partial', itemErrors: 1 });
+    expect(JSON.stringify(track.mock.calls)).not.toMatch(/private|ntn_/);
+  });
+
+  test('an error-free completion reports a clean outcome and no failure category', async () => {
+    await handleBackgroundSync(null);
+    expect(track).toHaveBeenCalledWith('sync_completed', expect.objectContaining({
+      item_outcome: 'clean', item_error_category: 'none'
+    }));
+  });
+
+  test('a fatal failure leaves no stale item-error breakdown behind', async () => {
+    await handleBackgroundSync(null);
+    expect(data.sync_error_stats).toBeDefined();
+
+    syncAssignments.mockRejectedValue(Object.assign(new Error('private DB'), { status: 500 }));
+    await expect(handleBackgroundSync(null)).rejects.toThrow();
+
+    expect(data.sync_error_stats.lastSyncDiagnostics).toBeNull();
+  });
+
   test('Canvas extraction failure produces one categorized terminal event', async () => {
     chrome.tabs.sendMessage.mockImplementation(async (id, request) => request.type === 'EXTRACT_ASSIGNMENTS'
       ? { success: false, error: 'Canvas session expired at https://private.example?token=ntn_private' } : {});

@@ -279,7 +279,10 @@ export async function handleAssignmentSync(assignments, activeCourseIds = [], op
         lastSyncErrorCount: results.errors.length,
         cumulativeErrorCount: results.errors.length > 0 ? (prevStats.cumulativeErrorCount || 0) + results.errors.length : 0,
         lastSuccessfulSync: results.errors.length === 0 ? Date.now() : (prevStats.lastSuccessfulSync || null),
-        lastSyncErrors: results.errors.slice(0, 20)
+        lastSyncErrors: results.errors.slice(0, 20),
+        // Bounded category/operation breakdown of the item failures above (#72).
+        // Categories only — the raw messages stay in lastSyncErrors.
+        lastSyncDiagnostics: results.diagnostics || null
       }
     });
 
@@ -305,7 +308,10 @@ export async function handleAssignmentSync(assignments, activeCourseIds = [], op
         lastSyncErrorCount: 1,
         cumulativeErrorCount: (prevStats.cumulativeErrorCount || 0) + 1,
         lastSuccessfulSync: prevStats.lastSuccessfulSync || null,
-        lastSyncErrors: [{ error: error.message }]
+        lastSyncErrors: [{ error: error.message }],
+        // A fatal failure never reached the item loop, so there is no item-error
+        // breakdown to keep — clear the previous run's rather than leave it.
+        lastSyncDiagnostics: null
       }
     });
 

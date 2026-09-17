@@ -209,6 +209,9 @@ and what to do when something fails.
   limiters, the Notion schema reconciliation, and status preservation, plus
   the feature backlog. Planned work lives in
   [issues](https://github.com/KyleOrtzow1/CanvasNotionSync/issues).
+* **[docs/sync-diagnostics.md](docs/sync-diagnostics.md)** — what the per-sync
+  failure summary records, what it deliberately leaves out, and how to read
+  item-error counts without over-reading them.
 * **[RELEASING.md](RELEASING.md)** — release runbook.
 * Canvas LMS REST API: https://canvas.instructure.com/doc/api/
 * Notion API: https://developers.notion.com/reference/intro
