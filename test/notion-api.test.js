@@ -352,17 +352,18 @@ describe('NotionAPI.executeWithRetry', () => {
     expect(calls).toBeGreaterThanOrEqual(3);
   });
 
-  test('retries 429 rate limit and eventually throws', async () => {
+  test('defers 429 rate limits to the rate limiter instead of retrying', async () => {
     let calls = 0;
     const fn = async () => {
       calls++;
       const err = new Error('rate_limited');
       err.status = 429;
-      err.retryAfter = 0; // no real wait in tests
       throw err;
     };
     await expect(api.executeWithRetry(fn, 'testOp', 3)).rejects.toMatchObject({ status: 429 });
-    expect(calls).toBeGreaterThanOrEqual(3);
+    // The limiter owns the rate-limit budget; retrying here too would multiply
+    // the two loops together.
+    expect(calls).toBe(1);
   });
 
   test('does not retry 401 (throws immediately)', async () => {
