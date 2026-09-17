@@ -36,7 +36,8 @@ receipt. They are separate release prerequisites.
 
 ## Event contract
 
-The envelope contains a locally generated random numeric-pair `client_id` and advertising
+The envelope contains a locally generated random numeric-pair `client_id`, a
+`timestamp_micros` recorded when the event was tracked, and advertising
 consent fields set to `DENIED`. All events have `extension_version`. Only these
 event parameters are accepted; unknown events, extra fields, invalid enum values,
 and invalid numeric ranges drop the whole event. No free text is accepted.
@@ -73,6 +74,34 @@ and invalid numeric ranges drop the whole event. No free text is accepted.
 The Canvas-page button now measures extraction + Notion work through the same
 worker path as popup/periodic sync. The legacy `SYNC_ASSIGNMENTS` message measures
 only processing of supplied assignments, since extraction predates that message.
+
+## Event ordering
+
+Requests are dispatched concurrently and are not retried, so arrival order at
+Google means nothing. Each event is stamped with `timestamp_micros` while it is
+prepared, inside the worker's serialized preparation step, and the stamp is
+strictly increasing. The order GA records is therefore the order `track()` was
+called in, even when a later event's request is delivered first.
+
+That matters for the last step of the setup funnel, where the sync that verifies
+setup would otherwise be reported before the milestone it verified. A sync
+qualifies when it finishes with `errors = 0` and actually processed something —
+at least one created, updated, unchanged (`skipped`), or deleted assignment. An
+empty run exercises neither Notion writes nor the saved database, so it never
+establishes setup, and neither does a run with item errors, including deletion
+failures.
+
+For the first qualifying sync the worker resolves the milestone before either
+terminal event is tracked: it re-reads the saved credentials, compares them
+locally with the ones the sync actually used, and then tracks `setup_completed`
+followed by `sync_completed`. Credentials edited or cleared while the sync was
+running fail that comparison, so the milestone is dropped while the completion
+is still reported. The comparison is awaited rather than left to a
+fire-and-forget call, on the owned Canvas-page path and on the popup, periodic,
+and setup paths, where the parent sends `sync_completed` only after the child
+sync returns. Nothing about delivery becomes blocking: both events are still
+sent without awaiting their requests, and `setup_completed` stays once per
+installation identity.
 
 There is no `data_cleared` event. Clear All Data aborts pending analytics work,
 removes credentials, caches, configuration, analytics sessions/checkpoints,
@@ -171,6 +200,10 @@ updated policy through the normal release process.
 - Exercise install/update, popup, autosave, setup success/failure, all sync
   sources, empty results, partial errors, extraction errors, missing tabs,
   concurrent requests, and a failing/slow analytics connection.
+- On a development property, confirm the first qualifying sync reports
+  `setup_completed` with a `timestamp_micros` earlier than the `sync_completed`
+  that verified it, and that empty or partially failed syncs report no
+  milestone. DebugView orders by receipt; check the recorded event timestamps.
 - Turn analytics off; verify one final `analytics_disabled` attempt and no other subsequent GA requests, including
   after worker restart or extension update. Test Clear All Data with analytics on and off: the preference and installation ID must stay unchanged. Requests
   already received by Google cannot be recalled by a local abort.
