@@ -104,6 +104,10 @@ these are specified enough to start.
 
 ### Canvas-side
 
+Announcements, calendar events, modules and files are no longer open questions:
+see **[canvas-content-types.md](canvas-content-types.md)** for what each costs
+and the order they are worth building in ([#66](../../issues/66)).
+
 - Sync calendar events, not just assignments (course and personal events)
 - Module structure and completion progress
 - Quizzes as assignments, with attempt info and scores
