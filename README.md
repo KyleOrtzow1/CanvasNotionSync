@@ -209,6 +209,9 @@ and what to do when something fails.
   limiters, the Notion schema reconciliation, and status preservation, plus
   the feature backlog. Planned work lives in
   [issues](https://github.com/KyleOrtzow1/CanvasNotionSync/issues).
+* **[docs/canvas-content-types.md](docs/canvas-content-types.md)** — which
+  Canvas content beyond assignments (announcements, calendar events, modules,
+  files) is worth syncing, what each costs, and in what order.
 * **[RELEASING.md](RELEASING.md)** — release runbook.
 * Canvas LMS REST API: https://canvas.instructure.com/doc/api/
 * Notion API: https://developers.notion.com/reference/intro
