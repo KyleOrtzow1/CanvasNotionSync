@@ -3,6 +3,8 @@ import '../utils/debug.js';
 const { Debug } = globalThis;
 import '../utils/sync-logger.js';
 const { SyncLogger } = globalThis;
+import '../utils/request-timing.js';
+const { RequestTimings } = globalThis;
 
 // Ordering used to decide whether a manual Notion status edit represents
 // forward progress (preserve it) or a backward regression (Canvas wins).
@@ -347,6 +349,13 @@ export class AssignmentSyncer {
    */
   async syncAssignments(assignments, activeCourseIds = [], { onProgress } = {}) {
     const reportProgress = typeof onProgress === 'function' ? onProgress : () => {};
+
+    // Start this run's request timing window (see #61) before the first call —
+    // initialize()'s own requests belong to this sync. The timings live on the
+    // API client, which outlives a single sync, so the window is reset here
+    // rather than in a constructor.
+    this.notionAPI?.timings?.reset();
+
     // Initialize once before syncing
     if (!this.dataSourceId) {
       await this.initialize();
@@ -634,6 +643,7 @@ export class AssignmentSyncer {
 
     // Step 5: Print summary and flush logs
     this.printSyncSummary(results);
+    this.printRequestTimingSummary();
 
     SyncLogger.info(
       `Sync complete: ${results.created.length} created, ${results.updated.length} updated, ${results.deleted.length} deleted, ${results.errors.length} errors`
@@ -673,6 +683,19 @@ export class AssignmentSyncer {
       // If we can't fetch the current page, just use the new status
       Debug.warn(`Could not fetch existing status for status preservation:`, error.message);
     }
+  }
+
+  /**
+   * Print this run's per-endpoint Notion request timings (see #61). Debug gates
+   * the output, so it costs nothing when debug mode is off. Canvas's half of the
+   * picture is collected in the content script and logged by the background
+   * sync handler, because the two run in different contexts.
+   */
+  printRequestTimingSummary() {
+    const timings = this.notionAPI?.timings;
+    if (!timings || typeof timings.summary !== 'function') return;
+    if (typeof timings.isEmpty === 'function' && timings.isEmpty()) return;
+    RequestTimings?.logSummary(timings.summary());
   }
 
   /**

@@ -112,6 +112,8 @@ The extension provides user-friendly error messages with actionable next steps. 
 
 You can enable **Debug Mode** in the extension settings for verbose logging, and view recent sync history in the **Sync Logs** section of the popup.
 
+With Debug Mode on, each sync also ends with a **request timing summary**: every Canvas and Notion endpoint it called, how many calls it made, and the total, average, and slowest duration for each — plus the time it spent waiting on a rate limiter, reported separately so a slow sync can be told apart from a throttled one. Endpoints are grouped by shape (`/api/v1/courses/:id/assignments`), so the specific course, assignment, and page IDs stay out of the log. The Canvas summary is logged in the Canvas page's console (that is where those requests are made) and the Notion summary in the service worker's console; both are logged nowhere else and are never sent anywhere.
+
 ## Technical Overview
 
 * Built as a **Chrome Manifest V3** extension with a background service worker, content script, and popup UI.
@@ -154,7 +156,7 @@ While this extension is designed with security in mind, please be aware that you
 │   ├── credentials/     # AES-GCM encrypted credential storage
 │   ├── handlers/        # chrome.runtime message routing and sync orchestration
 │   ├── sync/            # Core sync: field-level diffing, create/update/delete
-│   ├── utils/           # Debug logging, error mapping, sanitization, storage quota
+│   ├── utils/           # Debug logging, request timing, error mapping, sanitization, storage quota
 │   └── validators/      # Canvas response and Notion property validation
 ├── test/                # Jest suites, mirroring src/ plus integration/
 ├── scripts/             # Version bump, zip build, store upload, asset generation

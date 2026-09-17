@@ -1,10 +1,16 @@
 import { NotionRateLimiter } from './notion-rate-limiter.js';
 import '../utils/debug.js';
-const { Debug } = globalThis;
+import '../utils/request-timing.js';
+const { Debug, RequestTimings } = globalThis;
+
+// Per-request timing for Notion calls (see #61). Shared with the limiter so the
+// time spent throttled and the time spent waiting on Notion end up in the same
+// summary instead of being indistinguishable inside one total.
+export const notionTimings = new RequestTimings({ label: 'Notion' });
 
 // Create a shared rate limiter instance. Exported so tests can drive the real
 // API -> limiter -> retry composition instead of a stand-in.
-export const notionRateLimiter = new NotionRateLimiter();
+export const notionRateLimiter = new NotionRateLimiter(notionTimings);
 const rateLimiter = notionRateLimiter;
 
 // Notion API Integration - Updated for new API structure
@@ -17,12 +23,33 @@ export class NotionAPI {
       'Content-Type': 'application/json',
       'Notion-Version': '2025-09-03'
     };
+    this.timings = notionTimings;
+  }
+
+  /**
+   * fetch(), timed. One entry per HTTP attempt — a request the retry loop or
+   * the rate limiter sends again is a second attempt Notion actually served,
+   * so it is recorded again rather than folded into the first (see #61).
+   * @param {string} url
+   * @param {Object} options - fetch init
+   * @returns {Promise<Response>}
+   */
+  async _fetch(url, options) {
+    const startedAt = Date.now();
+    try {
+      const response = await fetch(url, options);
+      this.timings?.record({ url, durationMs: Date.now() - startedAt, status: response.status });
+      return response;
+    } catch (error) {
+      this.timings?.record({ url, durationMs: Date.now() - startedAt, failed: true });
+      throw error;
+    }
   }
 
   // Get database info and data sources
   async getDatabase(databaseId) {
     const requestFunction = async () => {
-      const response = await fetch(`${this.baseURL}/databases/${databaseId}`, {
+      const response = await this._fetch(`${this.baseURL}/databases/${databaseId}`, {
         method: 'GET',
         headers: this.headers
       });
@@ -63,7 +90,7 @@ export class NotionAPI {
         body.page_size = options.page_size;
       }
 
-      const response = await fetch(`${this.baseURL}/data_sources/${dataSourceId}/query`, {
+      const response = await this._fetch(`${this.baseURL}/data_sources/${dataSourceId}/query`, {
         method: 'POST',
         headers: this.headers,
         body: JSON.stringify(body)
@@ -94,7 +121,7 @@ export class NotionAPI {
   // Create page in data source
   async createPage(dataSourceId, properties) {
     const requestFunction = async () => {
-      const response = await fetch(`${this.baseURL}/pages`, {
+      const response = await this._fetch(`${this.baseURL}/pages`, {
         method: 'POST',
         headers: this.headers,
         body: JSON.stringify({
@@ -130,7 +157,7 @@ export class NotionAPI {
   // property IDs a view's configuration requires.
   async getDataSource(dataSourceId) {
     const requestFunction = async () => {
-      const response = await fetch(`${this.baseURL}/data_sources/${dataSourceId}`, {
+      const response = await this._fetch(`${this.baseURL}/data_sources/${dataSourceId}`, {
         method: 'GET',
         headers: this.headers
       });
@@ -161,7 +188,7 @@ export class NotionAPI {
   // Renames are expressed as { '<current name>': { name: '<new name>' } }.
   async updateDataSourceProperties(dataSourceId, properties) {
     const requestFunction = async () => {
-      const response = await fetch(`${this.baseURL}/data_sources/${dataSourceId}`, {
+      const response = await this._fetch(`${this.baseURL}/data_sources/${dataSourceId}`, {
         method: 'PATCH',
         headers: this.headers,
         body: JSON.stringify({ properties: properties })
@@ -192,7 +219,7 @@ export class NotionAPI {
   // auto-creates alongside a new database, so it can be configured)
   async listViews(dataSourceId) {
     const requestFunction = async () => {
-      const response = await fetch(`${this.baseURL}/views?data_source_id=${dataSourceId}`, {
+      const response = await this._fetch(`${this.baseURL}/views?data_source_id=${dataSourceId}`, {
         method: 'GET',
         headers: this.headers
       });
@@ -221,7 +248,7 @@ export class NotionAPI {
   // Update a view's sorts, filter, quick filters, name, or configuration
   async updateView(viewId, updates) {
     const requestFunction = async () => {
-      const response = await fetch(`${this.baseURL}/views/${viewId}`, {
+      const response = await this._fetch(`${this.baseURL}/views/${viewId}`, {
         method: 'PATCH',
         headers: this.headers,
         body: JSON.stringify(updates)
@@ -251,7 +278,7 @@ export class NotionAPI {
   // Get page by ID
   async getPage(pageId) {
     const requestFunction = async () => {
-      const response = await fetch(`${this.baseURL}/pages/${pageId}`, {
+      const response = await this._fetch(`${this.baseURL}/pages/${pageId}`, {
         method: 'GET',
         headers: this.headers
       });
@@ -286,7 +313,7 @@ export class NotionAPI {
         body.archived = options.archived;
       }
 
-      const response = await fetch(`${this.baseURL}/pages/${pageId}`, {
+      const response = await this._fetch(`${this.baseURL}/pages/${pageId}`, {
         method: 'PATCH',
         headers: this.headers,
         body: JSON.stringify(body)

@@ -1,7 +1,9 @@
 import { describe, test, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 import { NotionRateLimiter } from '../src/api/notion-rate-limiter.js';
+import '../src/utils/request-timing.js';
 import { NotionAPI, notionRateLimiter } from '../src/api/notion-api.js';
+const { RequestTimings } = globalThis;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -10,8 +12,8 @@ import { NotionAPI, notionRateLimiter } from '../src/api/notion-api.js';
 // The retry budget is what is under test here, not the burst/average pacing.
 // Widening the windows keeps the queue from inserting throttle waits, and
 // replacing delay() keeps backoff out of real time.
-function makeTestLimiter() {
-  const limiter = new NotionRateLimiter();
+function makeTestLimiter(timings = null) {
+  const limiter = new NotionRateLimiter(timings);
   limiter.maxRequestsPerSecond = Number.MAX_SAFE_INTEGER;
   limiter.averageRequestsPerSecond = Number.MAX_SAFE_INTEGER;
   limiter.delay = jest.fn(async () => {});
@@ -259,5 +261,37 @@ describe('NotionAPI 429 handling through the shared rate limiter', () => {
 
     expect(rejected.status).toBe(400);
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Issue #61: time the limiter spends deliberately not sending a request is not
+// time Notion spent responding, so it is recorded separately.
+describe('NotionRateLimiter throttle accounting', () => {
+  test('records 429 backoff as waiting, not requesting', async () => {
+    const timings = new RequestTimings({ label: 'Notion' });
+    const limiter = makeTestLimiter(timings);
+
+    let attempt = 0;
+    const result = await limiter.execute(async () => {
+      attempt++;
+      if (attempt === 1) {
+        const error = new Error('rate_limited');
+        error.status = 429;
+        error.retryAfter = 1000;
+        throw error;
+      }
+      return 'ok';
+    });
+
+    expect(result).toBe('ok');
+    const summary = timings.summary();
+    expect(summary.requests).toBe(0);
+    expect(summary.waits.find(row => row.reason === 'notion_rate_limit_backoff').totalMs)
+      .toBeGreaterThanOrEqual(1000);
+  });
+
+  test('works without a timings sink attached', async () => {
+    const limiter = makeTestLimiter();
+    await expect(limiter.execute(async () => 'ok')).resolves.toBe('ok');
   });
 });

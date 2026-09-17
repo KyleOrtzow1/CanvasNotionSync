@@ -12,6 +12,14 @@ GitHub Release notes — so what is written here is what ships.
 
 ## [Unreleased]
 
+### Added
+
+- Debug Mode syncs end with a per-endpoint request timing summary for Canvas and
+  Notion: call count, total, average, and slowest duration per endpoint, with
+  rate-limiter waiting time reported separately from time spent on requests.
+  Endpoints are grouped by shape, so no course, assignment, or page IDs are
+  logged (#61).
+
 ### Fixed
 
 - Canvas 5xx responses and dropped connections retry with exponential backoff
