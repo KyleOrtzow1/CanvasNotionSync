@@ -26,6 +26,8 @@ class CanvasAPIExtractor {
     this.lastExtractionProgressWrite = 0;
     this.pendingExtractionProgress = null;
     this.pendingExtractionProgressTimer = null;
+    // Concurrent identical GETs share one request (see #58). Holds nothing once settled.
+    this.inFlightRequests = new Map();
     this.setupMessageListener();
     this.detectCanvasInstance();
   }
@@ -41,6 +43,9 @@ class CanvasAPIExtractor {
           return true;
         case 'SET_CANVAS_TOKEN':
           this.canvasToken = request.token;
+          // Requests already in flight carry the previous credentials; drop them as
+          // dedupe candidates so later calls are issued with the new token.
+          this.inFlightRequests.clear();
           break;
         case 'TEST_CANVAS_CONNECTION':
           this.testConnection()
@@ -461,22 +466,67 @@ class CanvasAPIExtractor {
     return links;
   }
 
+  // Identity of a GET for dedupe purposes: the URL with its query sorted, plus whether
+  // the request authenticates with a bearer token or the Canvas session cookie. The token
+  // itself is never part of the key; a token change clears the map instead.
+  _requestKey(urlString) {
+    const authMode = this.canvasToken ? 'bearer' : 'session';
+
+    try {
+      const url = new URL(urlString);
+      const query = [...url.searchParams.entries()]
+        .sort((a, b) => (a[0] === b[0] ? a[1].localeCompare(b[1]) : a[0].localeCompare(b[0])))
+        .map(([key, value]) => `${key}=${value}`)
+        .join('&');
+      return `GET|${authMode}|${url.origin}${url.pathname}?${query}`;
+    } catch (error) {
+      return `GET|${authMode}|${urlString}`;
+    }
+  }
+
+  // Collapse concurrent identical requests into one (see #58): a duplicate issued while the
+  // first is still open returns the same promise instead of spending bucket units again.
+  // Nothing is retained once a request settles, so a failure never poisons the key.
+  _dedupeRequest(urlString, requestFactory) {
+    const key = this._requestKey(urlString);
+    const pending = this.inFlightRequests.get(key);
+    if (pending) {
+      Debug.log(`Reusing in-flight Canvas request: ${urlString}`);
+      return pending;
+    }
+
+    let request;
+    try {
+      request = Promise.resolve(requestFactory());
+    } catch (error) {
+      return Promise.reject(error);
+    }
+
+    this.inFlightRequests.set(key, request);
+    const release = () => {
+      if (this.inFlightRequests.get(key) === request) {
+        this.inFlightRequests.delete(key);
+      }
+    };
+    request.then(release, release);
+
+    return request;
+  }
+
   async makeSingleAPICall(endpoint, params = {}) {
-    return this.rateLimiter.execute(async () => {
-      const url = new URL(this.baseURL + endpoint);
+    const url = new URL(this.baseURL + endpoint);
 
-      Object.keys(params).forEach(key => {
-        url.searchParams.append(key, params[key]); // eslint-disable-line security/detect-object-injection -- key from Object.keys()
-      });
-
-      return await this._fetchWithHeaders(url.toString());
+    Object.keys(params).forEach(key => {
+      url.searchParams.append(key, params[key]); // eslint-disable-line security/detect-object-injection -- key from Object.keys()
     });
+
+    return this.makeSingleAPICallByURL(url.toString());
   }
 
   async makeSingleAPICallByURL(fullUrl) {
-    return this.rateLimiter.execute(async () => {
+    return this._dedupeRequest(fullUrl, () => this.rateLimiter.execute(async () => {
       return await this._fetchWithHeaders(fullUrl);
-    });
+    }));
   }
 
   async _fetchWithHeaders(urlString) {
