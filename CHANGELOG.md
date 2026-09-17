@@ -12,6 +12,15 @@ GitHub Release notes — so what is written here is what ships.
 
 ## [Unreleased]
 
+### Added
+
+- Per-sync failure diagnostics: each sync now ends with a bounded summary of
+  which stage failed and why, using fixed error categories only — no titles,
+  IDs, URLs, or raw error text. It appears in the sync log, and distinguishes
+  error-free completions from partial-error ones and from runs where every item
+  failed. `sync_completed` gains two aggregate parameters, `item_outcome` and
+  `item_error_category`; see `docs/sync-diagnostics.md` (#72).
+
 ### Fixed
 
 - Canvas 5xx responses and dropped connections retry with exponential backoff

@@ -52,7 +52,7 @@ and invalid numeric ranges drop the whole event. No free text is accepted.
 | `database_prepared` | `outcome`, `category` | Preparing the user's existing database, not creating a new one |
 | `setup_completed` | none | Saved credentials match successful Notion verification or an error-free nonempty sync; once per analytics identity |
 | `sync_started` | `source` | Accepted sync attempt; excludes periodic preflight skips |
-| `sync_completed` | `source`, `created`, `updated`, `skipped`, `deleted`, `errors`, `duration_ms` | Completion, including zero-work and partial-error outcomes |
+| `sync_completed` | `source`, `created`, `updated`, `skipped`, `deleted`, `errors`, `duration_ms`, `item_outcome`, `item_error_category` | Completion, including zero-work and partial-error outcomes |
 | `sync_failed` | `source`, `category`, `duration_ms` | Fatal failure, including Canvas extraction |
 | `auto_sync_skipped` | `reason` | At most once per reason per 24 hours; not the exact number of skipped ticks |
 | `popup_opened` | none | Popup opened |
@@ -66,6 +66,16 @@ and invalid numeric ranges drop the whole event. No free text is accepted.
 - `category`: `authentication`, `permission`, `not_found`, `rate_limit`, `server`,
   `network`, `configuration`, `no_canvas_tab`, `in_progress`, `integration`,
   `schema`, `unknown`. For successful outcomes, `unknown` does not indicate an error.
+- `item_outcome`: `empty` (no items to sync), `clean` (every item succeeded),
+  `partial` (some items failed), `all_failed` (no item succeeded). Derived from
+  the syncer's own end-of-sync summary, or from the counts when a caller has no
+  summary. It describes *items*, not the sync call: a completion is still a
+  completion when `item_outcome` is `all_failed`; a fatal failure is
+  `sync_failed` instead.
+- `item_error_category`: the category behind the most item errors in that sync,
+  from the `category` list above, or `none`. `empty` and `clean` outcomes always
+  report `none`. It is the dominant category, not the only one; the per-category
+  breakdown stays local (see `docs/sync-diagnostics.md`).
 - `reason`: `configuration`, `no_canvas_tab`, `in_progress`.
 - `setting`: `canvas_token`, `notion_token`, `notion_database`, `debug_mode`.
 - Counts: integers from 0 to 10,000,000. Duration: milliseconds, capped at one day.
@@ -121,7 +131,7 @@ Event count by Event name separately from active-user counts and DebugView.
 ## Reporting setup
 
 Register event-scoped dimensions for `source`, `outcome`, `category`, `reason`,
-`setting`, `extension_version`; numeric metrics for `created`, `updated`,
+`setting`, `extension_version`, `item_outcome`, `item_error_category`; numeric metrics for `created`, `updated`,
 `skipped`, `deleted`, `errors`, `duration_ms` (milliseconds). Mark `setup_completed`
 as a key event. Create these explorations in the production property:
 
@@ -130,7 +140,11 @@ as a key event. Create these explorations in the production property:
    Existing upgrading installations form a separate cohort.
 2. Reliability: terminal outcomes by source/version, partial-error completions,
    and mean duration. Denominator: terminal events actually received; display
-   skipped reasons separately.
+   skipped reasons separately. Split completions by `item_outcome` rather than
+   labelling every `sync_completed` a success, and count *syncs* per outcome
+   separately from the `errors` metric, which sums item-error occurrences. A
+   single sync can contribute many occurrences, and consecutive syncs can
+   contribute the same unchanged failures again.
 3. Usage: participating installation IDs with UI/manual-sync/settings events.
    These are installations, not people. Opt-out, reinstalls, and ID resets affect
    coverage and continuity.
@@ -169,8 +183,9 @@ updated policy through the normal release process.
   secret is valid. Then send normal `/mp/collect` events with `debug_mode: 1`
   and positive `engagement_time_msec`, then confirm receipt in the development property's DebugView.
 - Exercise install/update, popup, autosave, setup success/failure, all sync
-  sources, empty results, partial errors, extraction errors, missing tabs,
-  concurrent requests, and a failing/slow analytics connection.
+  sources, empty results, partial errors, a sync where every item fails,
+  extraction errors, missing tabs, concurrent requests, and a failing/slow
+  analytics connection.
 - Turn analytics off; verify one final `analytics_disabled` attempt and no other subsequent GA requests, including
   after worker restart or extension update. Test Clear All Data with analytics on and off: the preference and installation ID must stay unchanged. Requests
   already received by Google cannot be recalled by a local abort.

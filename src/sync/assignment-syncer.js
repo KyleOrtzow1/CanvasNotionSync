@@ -1,4 +1,5 @@
 import { NotionValidator } from '../validators/notion-validator.js';
+import { SyncDiagnostics, describeDiagnostics } from '../utils/sync-diagnostics.js';
 import '../utils/debug.js';
 const { Debug } = globalThis;
 import '../utils/sync-logger.js';
@@ -78,6 +79,9 @@ export class AssignmentSyncer {
     // ones) don't have it. Writing an unknown property is a 400 that fails the
     // whole page write, so the column is only ever written when confirmed present.
     this.hasCompletionCheckbox = false;
+    // Bounded per-run failure diagnostics (#72). Replaced at the start of every
+    // syncAssignments() run so one run's counts never leak into the next.
+    this.diagnostics = new SyncDiagnostics();
   }
 
   async initialize() {
@@ -114,6 +118,7 @@ export class AssignmentSyncer {
       const dataSource = await this.notionAPI.getDataSource(this.dataSourceId);
       return dataSource?.properties?.Checkbox?.type === 'checkbox';
     } catch (error) {
+      this.diagnostics.recordSuppressedError(error, 'schema');
       Debug.warn('Could not read database schema for Checkbox column:', error.message);
       return false;
     }
@@ -154,6 +159,7 @@ export class AssignmentSyncer {
       }
       return null;
     } catch (error) {
+      this.diagnostics.recordSuppressedError(error, 'lookup');
       Debug.warn(`Could not search for existing page with Canvas ID ${canvasId}:`, error.message);
       return null;
     }
@@ -345,8 +351,12 @@ export class AssignmentSyncer {
    * @param {Array<string>} activeCourseIds - Currently active Canvas course IDs
    * @returns {Object} Sync results with statistics
    */
-  async syncAssignments(assignments, activeCourseIds = [], { onProgress } = {}) {
+  async syncAssignments(assignments, activeCourseIds = [], { onProgress, diagnostics } = {}) {
     const reportProgress = typeof onProgress === 'function' ? onProgress : () => {};
+    // Fresh per run, before initialize() so a schema read that fails on the way
+    // in is part of this run's diagnostics. A caller may supply its own
+    // accumulator (see #61) to collect into the same summary.
+    this.diagnostics = diagnostics instanceof SyncDiagnostics ? diagnostics : new SyncDiagnostics();
     // Initialize once before syncing
     if (!this.dataSourceId) {
       await this.initialize();
@@ -388,6 +398,7 @@ export class AssignmentSyncer {
 
         this._notionTruthMap = truthMap;
       } catch (error) {
+        this.diagnostics.recordSuppressedError(error, 'reconcile');
         Debug.warn('Cache reconciliation failed, continuing with existing cache:', error.message);
       }
     }
@@ -413,6 +424,10 @@ export class AssignmentSyncer {
     for (const [canvasId, assignment] of canvasAssignmentMap.entries()) {
       syncIndex++;
       reportProgress({ phase: 'syncing', current: syncIndex, total: canvasAssignmentMap.size, currentTitle: assignment.title, errorCount: results.errors.length });
+      // Which stage this item reached, so a failure is labelled with the
+      // operation that failed rather than just "assignment". Coarse on
+      // purpose — it never identifies the assignment.
+      let stage = 'lookup';
       try {
         // Check cache and compare fields
         const comparison = this.assignmentCache
@@ -428,6 +443,7 @@ export class AssignmentSyncer {
           if (existingPageId) {
             // Page exists in Notion but wasn't in cache — update instead of create
             Debug.log(`Found existing Notion page for "${assignment.title}", updating instead of creating`);
+            stage = 'update';
 
             // Preserve manual status changes
             await this.applyStatusPreservation(properties, existingPageId, assignment.status);
@@ -448,6 +464,7 @@ export class AssignmentSyncer {
             });
           } else {
             // Genuinely new assignment - create in Notion
+            stage = 'create';
             this.applyCompletionCheckbox(properties, null);
             const result = await this.notionAPI.createPage(this.dataSourceId, properties);
 
@@ -467,6 +484,7 @@ export class AssignmentSyncer {
         } else if (comparison.needsUpdate) {
           // Assignment changed - update in Notion
           const notionPageId = comparison.cachedEntry.notionPageId;
+          stage = 'update';
 
           try {
             // Preserve manual status changes
@@ -515,6 +533,7 @@ export class AssignmentSyncer {
                 });
               } else {
                 // No live page exists — create a new one
+                stage = 'create';
                 this.applyCompletionCheckbox(properties, null);
                 const result = await this.notionAPI.createPage(this.dataSourceId, properties);
 
@@ -566,6 +585,7 @@ export class AssignmentSyncer {
                 });
                 statusCorrected = true;
               } catch (error) {
+                this.diagnostics.recordSuppressedError(error, 'status_correction');
                 Debug.warn(`Could not correct regressed status for "${assignment.title}":`, error.message);
               }
             }
@@ -581,6 +601,7 @@ export class AssignmentSyncer {
         }
 
       } catch (error) {
+        this.diagnostics.recordItemError(error, stage);
         Debug.error(`Error syncing assignment ${assignment.title}:`, error.message);
         SyncLogger.error(`Failed to sync "${assignment.title}": ${error.message}`, { canvasId, title: assignment.title, error: error.message });
         results.errors.push({
@@ -613,6 +634,7 @@ export class AssignmentSyncer {
 
           results.deleted.push({ canvasId, courseId, notionPageId });
         } catch (error) {
+          this.diagnostics.recordItemError(error, 'delete');
           Debug.error(`Failed to delete assignment ${canvasId}:`, error.message);
           SyncLogger.error(`Failed to delete assignment: ${error.message}`, { canvasId, error: error.message });
           results.errors.push({
@@ -633,11 +655,15 @@ export class AssignmentSyncer {
     }
 
     // Step 5: Print summary and flush logs
+    results.diagnostics = this.summarizeDiagnostics(results);
     this.printSyncSummary(results);
 
     SyncLogger.info(
       `Sync complete: ${results.created.length} created, ${results.updated.length} updated, ${results.deleted.length} deleted, ${results.errors.length} errors`
     );
+    // Bounded, category-only failure breakdown — no titles, IDs, URLs, or raw
+    // error text, so it is safe to keep in the sync log the popup shows.
+    SyncLogger.info(describeDiagnostics(results.diagnostics), { diagnostics: results.diagnostics });
     await SyncLogger.flush();
 
     reportProgress({ phase: 'complete', current: canvasAssignmentMap.size, total: canvasAssignmentMap.size, errorCount: results.errors.length, errors: results.errors });
@@ -671,8 +697,25 @@ export class AssignmentSyncer {
       this.applyCompletionCheckbox(properties, existingStatus);
     } catch (error) {
       // If we can't fetch the current page, just use the new status
+      this.diagnostics.recordSuppressedError(error, 'status_preservation');
       Debug.warn(`Could not fetch existing status for status preservation:`, error.message);
     }
+  }
+
+  /**
+   * Close this run's diagnostics (#72): an error-free run, a run with some
+   * failed items, and a run where every item failed are three different
+   * outcomes that an `errors` count alone cannot tell apart.
+   * @param {Object} results - the sync results accumulated for this run
+   * @returns {Object} bounded summary, safe to log and to report in aggregate
+   */
+  summarizeDiagnostics(results) {
+    const succeeded = results.created.length + results.updated.length +
+                      results.skipped.length + results.deleted.length;
+    return this.diagnostics.summarize({
+      itemsProcessed: succeeded + results.errors.length,
+      itemsSucceeded: succeeded
+    });
   }
 
   /**
@@ -689,6 +732,11 @@ export class AssignmentSyncer {
     Debug.log(`  Skipped (no changes): ${results.skipped.length}`);
     Debug.log(`  Deleted: ${results.deleted.length}`);
     Debug.log(`  Errors: ${results.errors.length}`);
+
+    if (results.diagnostics) {
+      Debug.log(`  Outcome: ${results.diagnostics.outcome}`);
+      Debug.log(`  ${describeDiagnostics(results.diagnostics)}`);
+    }
 
     if (results.errors.length > 0) {
       Debug.warn('Errors encountered:');

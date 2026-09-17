@@ -5,8 +5,15 @@ const SESSION_MS = 30 * 60 * 1000;
 const SKIP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const MAX_PENDING = 32;
 const SOURCES = ['popup', 'canvas_page', 'periodic', 'setup'];
-const CATEGORIES = ['authentication', 'permission', 'not_found', 'rate_limit', 'server',
-  'network', 'configuration', 'no_canvas_tab', 'in_progress', 'integration', 'schema', 'unknown'];
+// Exported so item-error diagnostics (src/utils/sync-diagnostics.js) label
+// failures with exactly the categories this contract accepts, rather than
+// keeping a second list that could drift out of step with this one.
+export const ERROR_CATEGORIES = Object.freeze(['authentication', 'permission', 'not_found', 'rate_limit', 'server',
+  'network', 'configuration', 'no_canvas_tab', 'in_progress', 'integration', 'schema', 'unknown']);
+const CATEGORIES = ERROR_CATEGORIES;
+// How a completed sync's items fared, as opposed to how many errors it saw:
+// no items at all, every item fine, some failed, all failed.
+const ITEM_OUTCOMES = ['empty', 'clean', 'partial', 'all_failed'];
 const enumValue = values => value => values.includes(value);
 const count = value => Number.isSafeInteger(value) && value >= 0 && value <= 10000000;
 const duration = value => Number.isSafeInteger(value) && value >= 0 && value <= 86400000;
@@ -26,7 +33,8 @@ const SCHEMAS = new Map(Object.entries({
   setup_completed: {},
   sync_started: { source },
   sync_completed: { source, created: count, updated: count, skipped: count,
-    deleted: count, errors: count, duration_ms: duration },
+    deleted: count, errors: count, duration_ms: duration,
+    item_outcome: enumValue(ITEM_OUTCOMES), item_error_category: enumValue([...CATEGORIES, 'none']) },
   sync_failed: { source, category, duration_ms: duration },
   auto_sync_skipped: { reason: enumValue(['no_canvas_tab', 'in_progress', 'configuration']) },
   popup_opened: {},
@@ -73,12 +81,30 @@ export function categorizeError(error) {
 }
 
 export function syncCounts(results, startedAt) {
-  return {
+  const counts = {
     created: results?.created?.length || 0, updated: results?.updated?.length || 0,
     skipped: results?.skipped?.length || 0, deleted: results?.deleted?.length || 0,
     errors: results?.errors?.length || 0,
     duration_ms: Math.min(86400000, Math.max(0, Date.now() - startedAt))
   };
+  // The syncer's own bounded summary when there is one (see
+  // src/utils/sync-diagnostics.js); otherwise derive the same distinction from
+  // the counts, so a caller without diagnostics still reports a valid outcome
+  // instead of dropping the whole event.
+  const diagnostics = results?.diagnostics;
+  const outcome = ITEM_OUTCOMES.includes(diagnostics?.outcome)
+    ? diagnostics.outcome : deriveItemOutcome(counts);
+  const category = CATEGORIES.includes(diagnostics?.dominantCategory)
+    ? diagnostics.dominantCategory : 'none';
+  return { ...counts, item_outcome: outcome, item_error_category: outcome === 'clean' || outcome === 'empty' ? 'none' : category };
+}
+
+// Never reads error text — only how many items finished and how many did not.
+function deriveItemOutcome({ created, updated, skipped, deleted, errors }) {
+  const succeeded = created + updated + skipped + deleted;
+  if (succeeded + errors === 0) return 'empty';
+  if (errors === 0) return 'clean';
+  return succeeded === 0 ? 'all_failed' : 'partial';
 }
 
 export class Analytics {
