@@ -2,8 +2,10 @@ import { NotionRateLimiter } from './notion-rate-limiter.js';
 import '../utils/debug.js';
 const { Debug } = globalThis;
 
-// Create a shared rate limiter instance
-const rateLimiter = new NotionRateLimiter();
+// Create a shared rate limiter instance. Exported so tests can drive the real
+// API -> limiter -> retry composition instead of a stand-in.
+export const notionRateLimiter = new NotionRateLimiter();
+const rateLimiter = notionRateLimiter;
 
 // Notion API Integration - Updated for new API structure
 export class NotionAPI {
@@ -312,7 +314,13 @@ export class NotionAPI {
     return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'updatePage'));
   }
 
-  // Retry logic for 409 conflicts, 429 rate limits, and server errors
+  // Retry logic for 409 conflicts and server errors.
+  //
+  // 429s are deliberately *not* retried here. Every call site wraps this loop in
+  // NotionRateLimiter.execute(), which owns the rate-limit retry budget and the
+  // Retry-After backoff. Retrying 429 in both places multiplies the two loops
+  // together, so a sustained rate limit takes far more attempts than either
+  // budget allows.
   async executeWithRetry(requestFunction, operationType, maxRetries = 5) {
     let lastError;
 
@@ -334,18 +342,11 @@ export class NotionAPI {
           }
         }
 
-        // Handle 429 rate limits with exponential backoff + Retry-After
+        // Rate limits belong to the limiter's budget — hand them straight back
+        // so it can apply Retry-After and count the attempt exactly once.
         if (error.status === 429) {
-          const retryAfterDelay = error.retryAfter || 1000;
-          const exponentialDelay = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s, 8s, 16s
-          const delay = Math.max(retryAfterDelay, exponentialDelay);
-
-          Debug.log(`${operationType} rate limited (429) on attempt ${attempt}/${maxRetries}, retrying in ${delay}ms...`);
-
-          if (attempt < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, delay));
-            continue;
-          }
+          Debug.log(`${operationType} rate limited (429), deferring to the rate limiter's retry budget`);
+          throw error;
         }
 
         // For other errors, only retry a few times with shorter delays
