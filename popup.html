@@ -740,7 +740,8 @@
         <div class="form-group">
           <label for="canvasToken">Canvas access token (optional)</label>
           <input type="password" id="canvasToken" placeholder="Not needed — leave blank to use your Canvas login">
-          <div class="help-text">Leave blank and the extension uses your logged-in Canvas session. To use a token instead: Canvas → Account → Settings → <strong>+ New Access Token</strong>.</div>
+          <div class="help-text">Leave blank and the extension uses your logged-in Canvas session. To use a token instead: Canvas → Account → Settings → <strong>+ New Access Token</strong>. Canvas shows it once, as digits, a <strong>~</strong>, then a long run of letters and numbers — copy all of it.</div>
+          <div class="field-hint" id="canvasTokenHint">Optional. Stored encrypted on this computer only.</div>
         </div>
 
         <div class="form-group">
@@ -775,6 +776,7 @@
 
   <script src="src/utils/notion-url.js"></script>
   <script src="src/utils/canvas-hosts.js"></script>
+  <script src="src/validators/token-validator.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 // Canvas-Notion Sync Popup Script - Enhanced for Canvas API
-/* global normalizeNotionDatabaseId, CANVAS_TAB_PATTERNS */
+/* global normalizeNotionDatabaseId, CANVAS_TAB_PATTERNS, validateCanvasToken */
 document.addEventListener('DOMContentLoaded', function() {
   // Get DOM elements
   const canvasTokenInput = document.getElementById('canvasToken');
@@ -35,6 +35,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const setupStep3 = document.getElementById('setupStep3');
   const setupDone = document.getElementById('setupDone');
   const setupDatabaseId = document.getElementById('setupDatabaseId');
+  const canvasTokenHint = document.getElementById('canvasTokenHint');
   const notionTokenHint = document.getElementById('notionTokenHint');
   const notionDatabaseHint = document.getElementById('notionDatabaseHint');
   const advancedToggle = document.getElementById('advancedToggle');
@@ -240,6 +241,17 @@ document.addEventListener('DOMContentLoaded', function() {
    * saved, so a user can leave a field half-finished and come back to it.
    */
   function updateFieldHints() {
+    // A blank Canvas token is a valid configuration — it means "use my Canvas
+    // login" — so only a non-empty, malformed value is worth flagging.
+    const canvasToken = canvasTokenInput.value.trim();
+    const canvasCheck = canvasToken ? validateCanvasToken(canvasToken) : { valid: true, message: null };
+    if (canvasTokenHint) {
+      canvasTokenHint.textContent = canvasCheck.valid
+        ? 'Optional. Stored encrypted on this computer only.'
+        : canvasCheck.message;
+      canvasTokenHint.classList.toggle('warn', !canvasCheck.valid);
+    }
+
     const token = notionTokenInput.value.trim();
     const tokenOk = !token || isNotionTokenShaped(token);
     notionTokenHint.textContent = tokenOk
@@ -404,6 +416,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
   async function handleTestCanvasAPI() {
     const canvasToken = canvasTokenInput.value.trim();
+
+    // Say "that isn't a token" here rather than letting Canvas answer with the
+    // same auth error an expired token produces — the fixes differ.
+    if (canvasToken) {
+      const tokenCheck = validateCanvasToken(canvasToken);
+      if (!tokenCheck.valid) {
+        showStatus('❌ ' + tokenCheck.message, 'error');
+        canvasTokenInput.focus();
+        return;
+      }
+    }
 
     try {
       setButtonLoading(testCanvasBtn, 'Testing...');
