@@ -209,6 +209,9 @@ and what to do when something fails.
   limiters, the Notion schema reconciliation, and status preservation, plus
   the feature backlog. Planned work lives in
   [issues](https://github.com/KyleOrtzow1/CanvasNotionSync/issues).
+* **[docs/notion-oauth.md](docs/notion-oauth.md)** — why setup pastes an
+  integration token instead of offering "Sign in with Notion", and what would
+  have to change for that to be possible.
 * **[RELEASING.md](RELEASING.md)** — release runbook.
 * Canvas LMS REST API: https://canvas.instructure.com/doc/api/
 * Notion API: https://developers.notion.com/reference/intro
