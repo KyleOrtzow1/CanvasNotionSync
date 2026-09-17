@@ -32,6 +32,7 @@ await jest.unstable_mockModule('../src/api/notion-api.js', () => ({
 }));
 
 const { prepareNotionDatabase } = await import('../src/handlers/background-handlers.js');
+const { notionSchemaCache } = await import('../src/cache/notion-schema-cache.js');
 
 // Every column the template defines, with the type Notion reports for it.
 const TEMPLATE_TYPES = {
@@ -199,6 +200,27 @@ describe('prepareNotionDatabase', () => {
 
     expect(result.success).toBe(true);
     expect(result.databaseId).toBe('db-id');
+  });
+
+  test('drops the cached schema so the next sync sees the columns it just added', async () => {
+    await notionSchemaCache.set('ds-id', freshDatabaseSchema());
+    getDataSourceMock.mockResolvedValue({ properties: freshDatabaseSchema() });
+
+    await prepareNotionDatabase('test-token', 'db-id');
+
+    expect(await notionSchemaCache.get('ds-id')).toBeNull();
+  });
+
+  test('drops the cached schema even when there was nothing to patch', async () => {
+    // Re-running setup is also how a user says "I edited the database in
+    // Notion, look again" — a matching plan must not keep a stale schema.
+    await notionSchemaCache.set('ds-id', schemaFor());
+
+    const result = await prepareNotionDatabase('test-token', 'db-id');
+
+    expect(result.success).toBe(true);
+    expect(updateDataSourcePropertiesMock).not.toHaveBeenCalled();
+    expect(await notionSchemaCache.get('ds-id')).toBeNull();
   });
 
   test('rejects a link to something that is not a database', async () => {
