@@ -152,3 +152,43 @@ describe('getUserFriendlyNotionError', () => {
     expect(result.message).toContain('unexpected error');
   });
 });
+
+// Issue #60: a request the circuit breaker rejected was never sent, so it has no
+// HTTP status — the popup must still say what happened rather than fall through
+// to the generic "unexpected error" text.
+describe('circuit-open errors', () => {
+  const circuitError = (reason) => ({
+    message: 'Canvas is not responding, so requests are paused.',
+    circuitOpen: true,
+    reason,
+    endpoint: '/courses',
+    retryAfterMs: 12000
+  });
+
+  test('an outage reads as the service not responding', () => {
+    const result = getUserFriendlyCanvasError(circuitError('unavailable'));
+    expect(result.title).toBe('Canvas Is Not Responding');
+    expect(result.message).toContain('paused');
+    expect(result.action).toContain('Wait a minute');
+  });
+
+  test('an auth failure points at the credential that needs fixing', () => {
+    const canvas = getUserFriendlyCanvasError(circuitError('authentication'));
+    expect(canvas.title).toBe('Canvas Requests Paused');
+    expect(canvas.action).toContain('Log back in to Canvas');
+
+    const notion = getUserFriendlyNotionError(circuitError('authentication'));
+    expect(notion.title).toBe('Notion Requests Paused');
+    expect(notion.action).toContain('shared with the Canvas Sync connection');
+  });
+
+  test('a Notion outage does not fall through to the generic handler', () => {
+    const result = getUserFriendlyNotionError(circuitError('unavailable'));
+    expect(result.title).toBe('Notion Is Not Responding');
+    expect(result.message).toContain('Notion');
+  });
+
+  test('an ordinary error with a status is unaffected', () => {
+    expect(getUserFriendlyNotionError({ status: 404, message: 'nope' }).title).toBe('Database Not Found');
+  });
+});

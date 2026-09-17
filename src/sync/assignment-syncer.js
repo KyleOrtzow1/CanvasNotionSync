@@ -590,13 +590,30 @@ export class AssignmentSyncer {
         });
       }
 
+      // A service-wide circuit means Notion is giving the same answer to every
+      // request — an invalid token, an integration that lost access to the
+      // database. Walking the rest of the list would only add one identical
+      // error per assignment, so stop here and report what is left (#60).
+      if (this.notionAPI.circuitBreaker?.isServiceOpen()) {
+        const notAttempted = canvasAssignmentMap.size - syncIndex;
+        Debug.error(`Notion is rejecting every request; stopping sync with ${notAttempted} assignment(s) not attempted`);
+        SyncLogger.error(
+          `Sync stopped early: Notion is rejecting every request (${notAttempted} assignment(s) not attempted)`,
+          { notAttempted }
+        );
+        results.aborted = { reason: 'notion_unavailable', notAttempted };
+        break;
+      }
+
       // Small delay between API calls to respect rate limits
       await new Promise(resolve => setTimeout(resolve, 50));
     }
 
     // Step 4: Handle deleted assignments
     reportProgress({ phase: 'cleanup', current: canvasAssignmentMap.size, total: canvasAssignmentMap.size, errorCount: results.errors.length });
-    if (this.assignmentCache && activeCourseIds.length > 0) {
+    // Archiving pages goes to the same Notion that just rejected every write,
+    // so a sync that stopped early does not try to delete either.
+    if (this.assignmentCache && activeCourseIds.length > 0 && !results.aborted) {
       Debug.log('Checking for deleted assignments...');
       const cleanup = await this.assignmentCache.cleanupInactiveCourses(canvasIds);
 
