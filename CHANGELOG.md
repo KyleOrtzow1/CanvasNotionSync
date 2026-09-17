@@ -12,6 +12,18 @@ GitHub Release notes — so what is written here is what ships.
 
 ## [Unreleased]
 
+### Added
+
+- A circuit breaker on the Canvas and Notion call paths. After five consecutive
+  failures an endpoint is skipped for 30 seconds, then retried once to see if it
+  recovered, so an outage fails fast instead of making every assignment pay the
+  full retry ladder. Failures that mean the same thing for every request — an
+  expired Canvas session, a Notion token that was revoked, a database no longer
+  shared with the integration — pause that service straight away and stop the
+  sync rather than repeating themselves once per assignment. The popup says
+  which service is not responding, and state changes appear in the sync log
+  (#60).
+
 ### Fixed
 
 - Canvas 5xx responses and dropped connections retry with exponential backoff

@@ -511,3 +511,80 @@ describe('Integration — concurrent sync calls', () => {
     expect(Array.isArray(r2.created)).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Issue #60: a Notion that rejects every write must not be retried once per
+// assignment — the circuit opens and the sync stops with the rest unattempted.
+// ---------------------------------------------------------------------------
+
+describe('Integration — circuit breaker stops a hopeless sync', () => {
+  function makeRejectingFetch(status, body) {
+    const { fetchMock } = makeStatefulFetch();
+    let writeAttempts = 0;
+
+    const fetchWithFailingWrites = jest.fn(async (url, opts) => {
+      if (url.endsWith('/pages') && opts?.method === 'POST') {
+        writeAttempts++;
+        return {
+          ok: false,
+          status,
+          headers: { get: () => null },
+          json: async () => body,
+          text: async () => JSON.stringify(body)
+        };
+      }
+      return fetchMock(url, opts);
+    });
+
+    return { fetchWithFailingWrites, writeAttempts: () => writeAttempts };
+  }
+
+  test('a revoked token stops the sync after the first assignment', async () => {
+    const { fetchWithFailingWrites, writeAttempts } =
+      makeRejectingFetch(401, { message: 'API token is invalid' });
+    globalThis.fetch = fetchWithFailingWrites;
+
+    const syncer = new AssignmentSyncer(new NotionAPI('stale-token'), DB_ID, new AssignmentCacheManager());
+    const assignments = [
+      makeAssignment(201, 'First'),
+      makeAssignment(202, 'Second'),
+      makeAssignment(203, 'Third')
+    ];
+
+    const results = await syncer.syncAssignments(assignments, [COURSE_A]);
+
+    // One real attempt, not one per assignment.
+    expect(writeAttempts()).toBe(1);
+    expect(results.errors).toHaveLength(1);
+    expect(results.created).toHaveLength(0);
+    expect(results.aborted).toEqual({ reason: 'notion_unavailable', notAttempted: 2 });
+  });
+
+  test('a 400 on one assignment does not stop the ones after it', async () => {
+    const { fetchMock } = makeStatefulFetch();
+    let firstWrite = true;
+    globalThis.fetch = jest.fn(async (url, opts) => {
+      if (url.endsWith('/pages') && opts?.method === 'POST' && firstWrite) {
+        firstWrite = false;
+        return {
+          ok: false,
+          status: 400,
+          headers: { get: () => null },
+          json: async () => ({ message: 'body failed validation' }),
+          text: async () => 'body failed validation'
+        };
+      }
+      return fetchMock(url, opts);
+    });
+
+    const syncer = new AssignmentSyncer(new NotionAPI('test-token'), DB_ID, new AssignmentCacheManager());
+    const results = await syncer.syncAssignments(
+      [makeAssignment(301, 'Bad'), makeAssignment(302, 'Good')],
+      [COURSE_A]
+    );
+
+    expect(results.aborted).toBeUndefined();
+    expect(results.errors).toHaveLength(1);
+    expect(results.created).toHaveLength(1);
+  });
+});
