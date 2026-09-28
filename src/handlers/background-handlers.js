@@ -8,6 +8,7 @@ import {
 } from '../utils/notion-database-template.js';
 import { AssignmentSyncer } from '../sync/assignment-syncer.js';
 import { AssignmentCacheManager } from '../cache/assignment-cache-manager.js';
+import { notionSchemaCache } from '../cache/notion-schema-cache.js';
 import '../utils/debug.js';
 const { Debug } = globalThis;
 import '../utils/error-messages.js';
@@ -440,6 +441,10 @@ export async function prepareNotionDatabase(token, databaseId) {
     if (Object.keys(plan.updates).length > 0) {
       await notionAPI.updateDataSourceProperties(dataSourceId, plan.updates);
     }
+
+    // Setup is also how a user says "I changed the database, look again", so
+    // drop the cached schema whether or not this run patched anything.
+    await notionSchemaCache.invalidate(dataSourceId);
 
     // Best-effort: sort and lay out the database's default view. Not fatal if
     // it fails — the columns are in place and sync works without it.
