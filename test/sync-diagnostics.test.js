@@ -14,6 +14,7 @@ import {
 } from '../src/utils/sync-diagnostics.js';
 import { Analytics, ERROR_CATEGORIES, sanitizeEvent, syncCounts } from '../src/utils/analytics.js';
 import { AssignmentSyncer } from '../src/sync/assignment-syncer.js';
+import { NotionSchemaCache } from '../src/cache/notion-schema-cache.js';
 
 // A failure carrying everything that must never reach a summary: a token, an
 // assignment title, a Notion page ID, and a URL.
@@ -389,7 +390,9 @@ describe('AssignmentSyncer end-of-sync diagnostics', () => {
 
   test('a schema read that fails before the loop belongs to the same run', async () => {
     const notion = fakeNotion({ getDataSource: async () => { throw statusError(500, 'schema read failed'); } });
-    const syncer = new AssignmentSyncer(notion, 'db-1', fakeCache());
+    // Its own schema cache: the shared one may already hold this data source's
+    // schema from an earlier test, and then the failing read never happens.
+    const syncer = new AssignmentSyncer(notion, 'db-1', fakeCache(), { schemaCache: new NotionSchemaCache() });
     const results = await syncer.syncAssignments([assignment(1)], ['course-1']);
 
     expect(results.diagnostics.suppressed).toMatchObject({ 'server:schema': 1 });

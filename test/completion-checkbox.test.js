@@ -4,6 +4,7 @@
  * Notion exposes no automations API, so the syncer reproduces the behaviour.
  */
 import { describe, test, expect, jest, beforeEach } from '@jest/globals';
+import { NotionSchemaCache } from '../src/cache/notion-schema-cache.js';
 import {
   COMPLETION_CHECKBOX_STATUSES,
   shouldTickCompletionCheckbox,
@@ -42,7 +43,11 @@ describe('shouldTickCompletionCheckbox', () => {
 
 describe('AssignmentSyncer.detectCompletionCheckbox', () => {
   function syncerWith(getDataSource) {
-    const syncer = new AssignmentSyncer({ getDataSource }, 'db1');
+    // A cache of its own per case: the shared one would serve the first
+    // schema to every later test, since they all use the same data source ID.
+    const syncer = new AssignmentSyncer({ getDataSource }, 'db1', null, {
+      schemaCache: new NotionSchemaCache()
+    });
     syncer.dataSourceId = 'ds1';
     return syncer;
   }

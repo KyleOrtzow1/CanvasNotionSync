@@ -8,6 +8,7 @@ import {
 } from '../utils/notion-database-template.js';
 import { AssignmentSyncer } from '../sync/assignment-syncer.js';
 import { AssignmentCacheManager } from '../cache/assignment-cache-manager.js';
+import { notionSchemaCache } from '../cache/notion-schema-cache.js';
 import '../utils/debug.js';
 const { Debug } = globalThis;
 import '../utils/error-messages.js';
@@ -288,8 +289,16 @@ export async function handleAssignmentSync(assignments, activeCourseIds = [], op
 
     notifySyncResult(source, results);
 
+    // Resolve the milestone before either completion event is tracked. track()
+    // stamps and orders events as it is called, so awaiting the credential
+    // comparison here — rather than firing it off and hoping it lands first —
+    // is what puts setup_completed ahead of the sync that verified it, on the
+    // owned path and on the parent path alike (a parent sync sends its own
+    // sync_completed only after this function returns).
+    const verifiedSetup = syncVerifiesSetup(results) &&
+      await savedSetupMatches(credentials.notionToken, credentials.notionDatabaseId);
+    if (verifiedSetup) void analytics.track('setup_completed');
     if (ownsAnalytics) void analytics.track('sync_completed', { source: 'canvas_page', ...syncCounts(results, syncStart) });
-    if (results.errors.length === 0) void recordVerifiedSetup(credentials.notionToken, credentials.notionDatabaseId);
     return results;
   } catch (error) {
     if (ownsAnalytics) void analytics.track('sync_failed', {
@@ -323,16 +332,30 @@ export async function handleAssignmentSync(assignments, activeCourseIds = [], op
   }
 }
 
+// A sync establishes setup only when it finished without item errors and
+// actually processed something. An empty run — no assignments extracted, or
+// none supplied — exercises neither Notion writes nor the saved database, so
+// it proves nothing about the configuration.
+function syncVerifiesSetup(results) {
+  if (!results || results.errors?.length) return false;
+  return Boolean(results.created?.length || results.updated?.length ||
+    results.skipped?.length || results.deleted?.length);
+}
+
 // Verification may finish after the user edits or clears their credentials.
-// Compare locally, and send only the milestone if it still describes the saved
-// configuration. No credential/ID enters the analytics module.
-export async function recordVerifiedSetup(token, databaseId) {
+// Compare locally, and report the milestone only if it still describes the
+// saved configuration. No credential/ID enters the analytics module.
+export async function savedSetupMatches(token, databaseId) {
   try {
     const saved = await CredentialManager.getCredentials();
-    if (token && databaseId && saved.notionToken === token && saved.notionDatabaseId === databaseId) {
-      void analytics.track('setup_completed');
-    }
-  } catch { /* Analytics must never affect setup or syncing. */ }
+    return Boolean(token && databaseId && saved.notionToken === token && saved.notionDatabaseId === databaseId);
+  } catch {
+    return false; // Analytics must never affect setup or syncing.
+  }
+}
+
+export async function recordVerifiedSetup(token, databaseId) {
+  if (await savedSetupMatches(token, databaseId)) void analytics.track('setup_completed');
 }
 
 // Updated test function for new API structure
@@ -446,6 +469,10 @@ export async function prepareNotionDatabase(token, databaseId) {
     if (Object.keys(plan.updates).length > 0) {
       await notionAPI.updateDataSourceProperties(dataSourceId, plan.updates);
     }
+
+    // Setup is also how a user says "I changed the database, look again", so
+    // drop the cached schema whether or not this run patched anything.
+    await notionSchemaCache.invalidate(dataSourceId);
 
     // Best-effort: sort and lay out the database's default view. Not fatal if
     // it fails — the columns are in place and sync works without it.

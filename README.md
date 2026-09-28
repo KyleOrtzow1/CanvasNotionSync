@@ -17,6 +17,7 @@ A Chrome extension designed to automatically synchronize assignments from the Ca
 * **Data Validation and Sanitization**: Validates all Canvas API responses and sanitizes HTML from assignment descriptions before storage, protecting against malformed data and XSS.
 * **Dual Rate Limiters**: Leaky-bucket rate limiters for both Canvas (700-unit capacity, 10 units/sec leak) and Notion (5 req/sec burst, 3 req/sec average) prevent service disruptions.
 * **Automatic Error Recovery**: Retries transient Canvas and Notion errors with exponential backoff, and provides user-friendly error messages with actionable next steps.
+* **Fail-Fast on Outages**: A circuit breaker stops retrying an endpoint that has failed five times in a row, and pauses a service outright when it rejects every request (an expired Canvas session, a Notion integration that lost access). A sync against something that is down ends quickly and says which service is not responding, instead of appearing to hang.
 * **Storage Quota Monitoring**: Tracks `chrome.storage.local` usage with automatic cache cleanup when storage exceeds 90%, and manual cleanup from the popup UI.
 * **Sync Logs and Progress**: A built-in sync log viewer shows timestamped, color-coded operation history. Real-time progress indicators display current/total assignments during sync.
 * **Debug Mode**: An optional debug toggle in settings enables verbose logging for troubleshooting without cluttering the console in normal use.

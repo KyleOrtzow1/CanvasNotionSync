@@ -20,7 +20,7 @@
       "https://*.instructure.com/*", 
       "https://*.canvaslms.com/*"
     ],
-    "js": ["src/utils/debug.js", "src/utils/error-messages.js", "src/utils/canvas-hosts.js", "src/validators/canvas-validator.js", "src/api/canvas-rate-limiter.js", "content-script.js"],
+    "js": ["src/utils/debug.js", "src/utils/error-messages.js", "src/utils/canvas-hosts.js", "src/utils/circuit-breaker.js", "src/validators/canvas-validator.js", "src/api/canvas-rate-limiter.js", "content-script.js"],
     "run_at": "document_idle"
   }],
   

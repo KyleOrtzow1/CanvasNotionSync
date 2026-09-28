@@ -76,7 +76,35 @@ const notionErrorMap = {
   }
 };
 
+// A request the circuit breaker rejected was never sent, so it has no status to
+// map. Say that the extension stopped asking, and why (see #60), rather than
+// letting the raw breaker message fall through to the generic handler.
+function getCircuitOpenError(error, service) {
+  if (error.reason === 'authentication') {
+    return {
+      title: `${service} Requests Paused`,
+      message: `${service} rejected several requests in a row for the same reason, ` +
+        `so the extension stopped retrying every remaining assignment against it.`,
+      action: service === 'Canvas'
+        ? 'Log back in to Canvas in this browser (or check your Canvas API token in settings), then sync again.'
+        : 'Check your Notion token, and that the database is still shared with the Canvas Sync connection, then sync again.'
+    };
+  }
+
+  return {
+    title: `${service} Is Not Responding`,
+    message: `${service} failed several requests in a row, so the extension paused ` +
+      `further requests instead of retrying once per assignment.`,
+    action: 'Wait a minute and sync again. If it keeps happening, check your network connection ' +
+      `and whether ${service} is having an outage.`
+  };
+}
+
 function getUserFriendlyCanvasError(error) {
+  if (error.circuitOpen) {
+    return getCircuitOpenError(error, 'Canvas');
+  }
+
   const status = error.status || error.statusCode || 0;
   const mapped = canvasErrorMap[status]; // eslint-disable-line security/detect-object-injection -- numeric HTTP status code
 
@@ -101,6 +129,10 @@ function getUserFriendlyCanvasError(error) {
 }
 
 function getUserFriendlyNotionError(error) {
+  if (error.circuitOpen) {
+    return getCircuitOpenError(error, 'Notion');
+  }
+
   const status = error.status || error.statusCode || 0;
   const mapped = notionErrorMap[status]; // eslint-disable-line security/detect-object-injection -- numeric HTTP status code
 
