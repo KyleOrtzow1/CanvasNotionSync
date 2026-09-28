@@ -29,6 +29,11 @@ GitHub Release notes — so what is written here is what ships.
   error-free completions from partial-error ones and from runs where every item
   failed. `sync_completed` gains two aggregate parameters, `item_outcome` and
   `item_error_category`; see `docs/sync-diagnostics.md` (#72).
+- Debug Mode syncs end with a per-endpoint request timing summary for Canvas and
+  Notion: call count, total, average, and slowest duration per endpoint, with
+  rate-limiter waiting time reported separately from time spent on requests.
+  Endpoints are grouped by shape, so no course, assignment, or page IDs are
+  logged (#61).
 
 ### Fixed
 
