@@ -24,7 +24,8 @@ Repository edits do not update the Chrome Web Store developer dashboard.
   unrelated profiling use in this implementation.
 - Justify `https://www.google-analytics.com/*` for HTTPS Measurement Protocol
   requests from the worker. No script is injected on Google Analytics pages.
-- Confirm production GA retention is 2 months with reset on new activity off.
+- Confirm production GA retention is 14 months with reset on new activity on,
+  matching `docs/privacy-policy.html`.
   Aggregate reports may persist longer. Local clearing/opt-out does not erase
   data Google already received.
 

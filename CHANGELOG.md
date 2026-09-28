@@ -12,6 +12,8 @@ GitHub Release notes — so what is written here is what ships.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-28
+
 ### Added
 
 - A circuit breaker on the Canvas and Notion call paths. After five consecutive
@@ -34,6 +36,26 @@ GitHub Release notes — so what is written here is what ships.
   rate-limiter waiting time reported separately from time spent on requests.
   Endpoints are grouped by shape, so no course, assignment, or page IDs are
   logged (#61).
+- The popup checks an optional Canvas access token's format as you type, and
+  says what is wrong with one that could never work — a truncated copy-paste,
+  say — instead of failing later with the same error an expired token gives.
+  The help text now describes what a Canvas token looks like (#59).
+- The sync log warns when a Status or Course value being written is not an
+  option in your Notion database, so a renamed status or course no longer grows
+  the option list without anyone noticing. The value is still written (#56).
+
+### Changed
+
+- Automatic syncs only show a notification when something was created or
+  updated, with shorter wording. Manual syncs still confirm, and partial
+  failures are still reported (#64).
+- Fewer requests per sync: the Notion database layout is read once and reused
+  for an hour (re-running **Set Up Database** refreshes it), and identical
+  Canvas requests made at the same time share one response (#56, #58).
+- Analytics events carry the time they were recorded, so setup is always
+  reported ahead of the sync that confirmed it (#70).
+- Analytics retention is now 14 months, and new activity extends it for a
+  returning installation. The privacy policy has been updated to match.
 
 ### Fixed
 
@@ -41,6 +63,9 @@ GitHub Release notes — so what is written here is what ships.
   instead of failing the assignment outright. Bounded to two retries, so a
   Canvas outage still fails quickly; 4xx responses are unchanged and fail fast
   (#54).
+- A sustained Notion rate limit could retry indefinitely. Retries are now
+  capped with a bounded backoff that respects `Retry-After`, and retried
+  requests count against the pacing limits (#69).
 
 ## [1.2.0] - 2026-09-10
 
