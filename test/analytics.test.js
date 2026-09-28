@@ -290,7 +290,7 @@ describe('event meaning and reporting metadata', () => {
 
     const milestone = client.track('setup_completed');
     const completion = client.track('sync_completed', { source: 'popup', created: 1, updated: 0,
-      skipped: 0, deleted: 0, errors: 0, duration_ms: 5 });
+      skipped: 0, deleted: 0, errors: 0, duration_ms: 5, item_outcome: 'clean', item_error_category: 'none' });
     await Promise.all([milestone, completion]);
 
     expect(completions).toEqual(['sync_completed', 'setup_completed']);
