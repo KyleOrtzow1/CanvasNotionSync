@@ -36,7 +36,8 @@ receipt. They are separate release prerequisites.
 
 ## Event contract
 
-The envelope contains a locally generated random numeric-pair `client_id` and advertising
+The envelope contains a locally generated random numeric-pair `client_id`, a
+`timestamp_micros` recorded when the event was tracked, and advertising
 consent fields set to `DENIED`. All events have `extension_version`. Only these
 event parameters are accepted; unknown events, extra fields, invalid enum values,
 and invalid numeric ranges drop the whole event. No free text is accepted.
@@ -52,7 +53,7 @@ and invalid numeric ranges drop the whole event. No free text is accepted.
 | `database_prepared` | `outcome`, `category` | Preparing the user's existing database, not creating a new one |
 | `setup_completed` | none | Saved credentials match successful Notion verification or an error-free nonempty sync; once per analytics identity |
 | `sync_started` | `source` | Accepted sync attempt; excludes periodic preflight skips |
-| `sync_completed` | `source`, `created`, `updated`, `skipped`, `deleted`, `errors`, `duration_ms` | Completion, including zero-work and partial-error outcomes |
+| `sync_completed` | `source`, `created`, `updated`, `skipped`, `deleted`, `errors`, `duration_ms`, `item_outcome`, `item_error_category` | Completion, including zero-work and partial-error outcomes |
 | `sync_failed` | `source`, `category`, `duration_ms` | Fatal failure, including Canvas extraction |
 | `auto_sync_skipped` | `reason` | At most once per reason per 24 hours; not the exact number of skipped ticks |
 | `popup_opened` | none | Popup opened |
@@ -66,6 +67,16 @@ and invalid numeric ranges drop the whole event. No free text is accepted.
 - `category`: `authentication`, `permission`, `not_found`, `rate_limit`, `server`,
   `network`, `configuration`, `no_canvas_tab`, `in_progress`, `integration`,
   `schema`, `unknown`. For successful outcomes, `unknown` does not indicate an error.
+- `item_outcome`: `empty` (no items to sync), `clean` (every item succeeded),
+  `partial` (some items failed), `all_failed` (no item succeeded). Derived from
+  the syncer's own end-of-sync summary, or from the counts when a caller has no
+  summary. It describes *items*, not the sync call: a completion is still a
+  completion when `item_outcome` is `all_failed`; a fatal failure is
+  `sync_failed` instead.
+- `item_error_category`: the category behind the most item errors in that sync,
+  from the `category` list above, or `none`. `empty` and `clean` outcomes always
+  report `none`. It is the dominant category, not the only one; the per-category
+  breakdown stays local (see `docs/sync-diagnostics.md`).
 - `reason`: `configuration`, `no_canvas_tab`, `in_progress`.
 - `setting`: `canvas_token`, `notion_token`, `notion_database`, `debug_mode`.
 - Counts: integers from 0 to 10,000,000. Duration: milliseconds, capped at one day.
@@ -73,6 +84,34 @@ and invalid numeric ranges drop the whole event. No free text is accepted.
 The Canvas-page button now measures extraction + Notion work through the same
 worker path as popup/periodic sync. The legacy `SYNC_ASSIGNMENTS` message measures
 only processing of supplied assignments, since extraction predates that message.
+
+## Event ordering
+
+Requests are dispatched concurrently and are not retried, so arrival order at
+Google means nothing. Each event is stamped with `timestamp_micros` while it is
+prepared, inside the worker's serialized preparation step, and the stamp is
+strictly increasing. The order GA records is therefore the order `track()` was
+called in, even when a later event's request is delivered first.
+
+That matters for the last step of the setup funnel, where the sync that verifies
+setup would otherwise be reported before the milestone it verified. A sync
+qualifies when it finishes with `errors = 0` and actually processed something —
+at least one created, updated, unchanged (`skipped`), or deleted assignment. An
+empty run exercises neither Notion writes nor the saved database, so it never
+establishes setup, and neither does a run with item errors, including deletion
+failures.
+
+For the first qualifying sync the worker resolves the milestone before either
+terminal event is tracked: it re-reads the saved credentials, compares them
+locally with the ones the sync actually used, and then tracks `setup_completed`
+followed by `sync_completed`. Credentials edited or cleared while the sync was
+running fail that comparison, so the milestone is dropped while the completion
+is still reported. The comparison is awaited rather than left to a
+fire-and-forget call, on the owned Canvas-page path and on the popup, periodic,
+and setup paths, where the parent sends `sync_completed` only after the child
+sync returns. Nothing about delivery becomes blocking: both events are still
+sent without awaiting their requests, and `setup_completed` stays once per
+installation identity.
 
 There is no `data_cleared` event. Clear All Data aborts pending analytics work,
 removes credentials, caches, configuration, analytics sessions/checkpoints,
@@ -121,7 +160,7 @@ Event count by Event name separately from active-user counts and DebugView.
 ## Reporting setup
 
 Register event-scoped dimensions for `source`, `outcome`, `category`, `reason`,
-`setting`, `extension_version`; numeric metrics for `created`, `updated`,
+`setting`, `extension_version`, `item_outcome`, `item_error_category`; numeric metrics for `created`, `updated`,
 `skipped`, `deleted`, `errors`, `duration_ms` (milliseconds). Mark `setup_completed`
 as a key event. Create these explorations in the production property:
 
@@ -130,7 +169,11 @@ as a key event. Create these explorations in the production property:
    Existing upgrading installations form a separate cohort.
 2. Reliability: terminal outcomes by source/version, partial-error completions,
    and mean duration. Denominator: terminal events actually received; display
-   skipped reasons separately.
+   skipped reasons separately. Split completions by `item_outcome` rather than
+   labelling every `sync_completed` a success, and count *syncs* per outcome
+   separately from the `errors` metric, which sums item-error occurrences. A
+   single sync can contribute many occurrences, and consecutive syncs can
+   contribute the same unchanged failures again.
 3. Usage: participating installation IDs with UI/manual-sync/settings events.
    These are installations, not people. Opt-out, reinstalls, and ID resets affect
    coverage and continuity.
@@ -169,8 +212,13 @@ updated policy through the normal release process.
   secret is valid. Then send normal `/mp/collect` events with `debug_mode: 1`
   and positive `engagement_time_msec`, then confirm receipt in the development property's DebugView.
 - Exercise install/update, popup, autosave, setup success/failure, all sync
-  sources, empty results, partial errors, extraction errors, missing tabs,
-  concurrent requests, and a failing/slow analytics connection.
+  sources, empty results, partial errors, a sync where every item fails,
+  extraction errors, missing tabs, concurrent requests, and a failing/slow
+  analytics connection.
+- On a development property, confirm the first qualifying sync reports
+  `setup_completed` with a `timestamp_micros` earlier than the `sync_completed`
+  that verified it, and that empty or partially failed syncs report no
+  milestone. DebugView orders by receipt; check the recorded event timestamps.
 - Turn analytics off; verify one final `analytics_disabled` attempt and no other subsequent GA requests, including
   after worker restart or extension update. Test Clear All Data with analytics on and off: the preference and installation ID must stay unchanged. Requests
   already received by Google cannot be recalled by a local abort.

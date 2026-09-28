@@ -90,6 +90,7 @@ describe('CanvasAPIExtractor request timing', () => {
     // The real modules: the extractor reads RequestTimings and the rate limiter
     // off globalThis exactly as the manifest's script order provides them.
     await import('../src/utils/canvas-hosts.js');
+    await import('../src/utils/circuit-breaker.js');
     await import('../src/utils/request-timing.js');
     await import('../src/api/canvas-rate-limiter.js');
     await import('../content-script.js');

@@ -102,6 +102,8 @@ describe('CanvasAPIExtractor request authentication', () => {
     };
 
     await import('../src/utils/canvas-hosts.js');
+    // Loaded as a plain script ahead of the content script in the manifest (#60).
+    await import('../src/utils/circuit-breaker.js');
     await import('../content-script.js');
     CanvasAPIExtractor = globalThis.CanvasAPIExtractor;
   });

@@ -1,10 +1,22 @@
 import { NotionValidator } from '../validators/notion-validator.js';
+import { notionSchemaCache, getSelectOptionNames } from '../cache/notion-schema-cache.js';
+import { SyncDiagnostics, describeDiagnostics } from '../utils/sync-diagnostics.js';
 import '../utils/debug.js';
 const { Debug } = globalThis;
 import '../utils/sync-logger.js';
 const { SyncLogger } = globalThis;
 import '../utils/request-timing.js';
 const { RequestTimings } = globalThis;
+
+// Select columns sync writes values into. Notion silently creates an option it
+// doesn't have, so an unexpected value grows the option list rather than
+// failing — these are checked against the real schema and reported instead.
+export const VALIDATED_SELECT_PROPERTIES = Object.freeze(['Status', 'Course']);
+
+// Upper bound on per-sync "unknown select option" warnings. SyncLogger keeps
+// only the last 100 entries; a database whose Status column was renamed would
+// otherwise push everything else out of the log.
+export const MAX_SELECT_WARNINGS_PER_SYNC = 20;
 
 // Ordering used to decide whether a manual Notion status edit represents
 // forward progress (preserve it) or a backward regression (Canvas wins).
@@ -71,15 +83,31 @@ export function resolvePreservedStatus(existingStatus, newStatus) {
 
 // Assignment synchronization logic with unified cache system
 export class AssignmentSyncer {
-  constructor(notionAPI, databaseId, assignmentCache = null) {
+  constructor(notionAPI, databaseId, assignmentCache = null, { schemaCache = notionSchemaCache } = {}) {
     this.notionAPI = notionAPI;
     this.databaseId = databaseId;
     this.assignmentCache = assignmentCache;
+    this.schemaCache = schemaCache;
     this.dataSourceId = null;
+    // The data source's `properties` map, read once per run (and at most once
+    // per TTL across runs) at initialize(). Null when it could not be read —
+    // every consumer degrades to today's unvalidated behaviour rather than
+    // failing the sync.
+    this.schema = null;
+    // Set once the schema has been looked at, successfully or not, so a failed
+    // read costs one request per run rather than one per consumer.
+    this.schemaLoaded = false;
     // Databases created before the Checkbox column existed (and hand-built
     // ones) don't have it. Writing an unknown property is a 400 that fails the
     // whole page write, so the column is only ever written when confirmed present.
     this.hasCompletionCheckbox = false;
+    // "property|value" pairs already reported this run, so a course name that
+    // isn't in the schema is logged once rather than once per assignment.
+    this.warnedSelectValues = new Set();
+    this.selectWarningCount = 0;
+    // Bounded per-run failure diagnostics (#72). Replaced at the start of every
+    // syncAssignments() run so one run's counts never leak into the next.
+    this.diagnostics = new SyncDiagnostics();
   }
 
   async initialize() {
@@ -94,6 +122,8 @@ export class AssignmentSyncer {
       // Use the first data source
       this.dataSourceId = database.data_sources[0].id;
 
+      // One read serves both the Checkbox detection and select validation.
+      await this.loadSchema();
       this.hasCompletionCheckbox = await this.detectCompletionCheckbox();
 
       return { success: true, dataSourceId: this.dataSourceId };
@@ -104,21 +134,95 @@ export class AssignmentSyncer {
   }
 
   /**
+   * The data source's property schema, from the cache when it's still fresh
+   * and from Notion otherwise. Read at most once per run: a failure (older API
+   * client without getDataSource, a request error) resolves to null and stays
+   * null for the run, so callers fall back to unvalidated behaviour instead of
+   * retrying a broken read or failing the sync.
+   * @returns {Promise<Object|null>} `properties` from the data source
+   */
+  async loadSchema() {
+    if (this.schemaLoaded) return this.schema;
+    this.schemaLoaded = true;
+
+    try {
+      if (typeof this.notionAPI.getDataSource !== 'function') return null;
+
+      this.schema = await this.schemaCache.getOrFetch(this.dataSourceId, async () => {
+        const dataSource = await this.notionAPI.getDataSource(this.dataSourceId);
+        return dataSource?.properties || null;
+      });
+    } catch (error) {
+      this.diagnostics.recordSuppressedError(error, 'schema');
+      Debug.warn('Could not read database schema:', error.message);
+      this.schema = null;
+    }
+
+    return this.schema;
+  }
+
+  /**
    * Report whether the target database actually has a `Checkbox` checkbox
-   * column. Any failure (older API client without getDataSource, a request
-   * error) is treated as "absent" so sync never risks writing a property the
-   * database doesn't have.
+   * column, from the schema already loaded for this run where possible.
    * @returns {Promise<boolean>}
    */
   async detectCompletionCheckbox() {
-    try {
-      if (typeof this.notionAPI.getDataSource !== 'function') return false;
-      const dataSource = await this.notionAPI.getDataSource(this.dataSourceId);
-      return dataSource?.properties?.Checkbox?.type === 'checkbox';
-    } catch (error) {
-      Debug.warn('Could not read database schema for Checkbox column:', error.message);
-      return false;
+    const schema = await this.loadSchema();
+    return schema?.Checkbox?.type === 'checkbox';
+  }
+
+  /**
+   * Check the select values about to be written against the options the
+   * database actually has, and warn about any that Notion would have to create.
+   *
+   * Reporting only: the value is still written, because Notion accepts it and
+   * refusing would silently drop a real course or status. Each distinct
+   * property/value pair is reported once per sync, up to a fixed cap.
+   * @param {Object} properties - Notion properties about to be written
+   * @returns {Array<{property: string, value: string}>} values not in the schema
+   */
+  validateSelectValues(properties) {
+    if (!this.schema) return [];
+
+    // A Map, not properties[name], so the lookup can't be an object injection.
+    const observed = new Map([
+      ['Status', properties?.Status?.select?.name],
+      ['Course', properties?.Course?.select?.name]
+    ]);
+
+    const unknown = [];
+
+    for (const property of VALIDATED_SELECT_PROPERTIES) {
+      const value = observed.get(property);
+      if (typeof value !== 'string' || value === '') continue;
+
+      const options = getSelectOptionNames(this.schema, property);
+      // Absent column, or one that isn't a select: nothing to validate against.
+      if (!options || options.includes(value)) continue;
+
+      unknown.push({ property, value });
+
+      const warningKey = `${property}|${value}`;
+      if (this.warnedSelectValues.has(warningKey)) continue;
+      this.warnedSelectValues.add(warningKey);
+
+      if (this.selectWarningCount < MAX_SELECT_WARNINGS_PER_SYNC) {
+        this.selectWarningCount++;
+        const message =
+          `"${value}" is not an option on the ${property} column — Notion will add it. ` +
+          'Rename it in Notion if that is not what you want.';
+        Debug.warn(message);
+        SyncLogger.warn(message);
+      } else if (this.selectWarningCount === MAX_SELECT_WARNINGS_PER_SYNC) {
+        this.selectWarningCount++;
+        SyncLogger.warn(
+          `More select values are missing from the database schema; ` +
+          `only the first ${MAX_SELECT_WARNINGS_PER_SYNC} are listed.`
+        );
+      }
     }
+
+    return unknown;
   }
 
   /**
@@ -156,6 +260,7 @@ export class AssignmentSyncer {
       }
       return null;
     } catch (error) {
+      this.diagnostics.recordSuppressedError(error, 'lookup');
       Debug.warn(`Could not search for existing page with Canvas ID ${canvasId}:`, error.message);
       return null;
     }
@@ -338,6 +443,10 @@ export class AssignmentSyncer {
       };
     }
 
+    // Every write goes through here, so this is the one place select values
+    // have to be checked against the schema.
+    this.validateSelectValues(properties);
+
     return properties;
   }
 
@@ -347,8 +456,12 @@ export class AssignmentSyncer {
    * @param {Array<string>} activeCourseIds - Currently active Canvas course IDs
    * @returns {Object} Sync results with statistics
    */
-  async syncAssignments(assignments, activeCourseIds = [], { onProgress } = {}) {
+  async syncAssignments(assignments, activeCourseIds = [], { onProgress, diagnostics } = {}) {
     const reportProgress = typeof onProgress === 'function' ? onProgress : () => {};
+    // Fresh per run, before initialize() so a schema read that fails on the way
+    // in is part of this run's diagnostics. A caller may supply its own
+    // accumulator (see #61) to collect into the same summary.
+    this.diagnostics = diagnostics instanceof SyncDiagnostics ? diagnostics : new SyncDiagnostics();
 
     // Start this run's request timing window (see #61) before the first call —
     // initialize()'s own requests belong to this sync. The timings live on the
@@ -360,6 +473,11 @@ export class AssignmentSyncer {
     if (!this.dataSourceId) {
       await this.initialize();
     }
+
+    // Schema warnings are per-run: a value reported last sync is worth
+    // reporting again if it is still missing from the database.
+    this.warnedSelectValues.clear();
+    this.selectWarningCount = 0;
 
     Debug.log(`Starting unified cache sync for ${assignments.length} Canvas assignments`);
     SyncLogger.info(`Sync started for ${assignments.length} assignments`);
@@ -397,6 +515,7 @@ export class AssignmentSyncer {
 
         this._notionTruthMap = truthMap;
       } catch (error) {
+        this.diagnostics.recordSuppressedError(error, 'reconcile');
         Debug.warn('Cache reconciliation failed, continuing with existing cache:', error.message);
       }
     }
@@ -422,6 +541,10 @@ export class AssignmentSyncer {
     for (const [canvasId, assignment] of canvasAssignmentMap.entries()) {
       syncIndex++;
       reportProgress({ phase: 'syncing', current: syncIndex, total: canvasAssignmentMap.size, currentTitle: assignment.title, errorCount: results.errors.length });
+      // Which stage this item reached, so a failure is labelled with the
+      // operation that failed rather than just "assignment". Coarse on
+      // purpose — it never identifies the assignment.
+      let stage = 'lookup';
       try {
         // Check cache and compare fields
         const comparison = this.assignmentCache
@@ -437,6 +560,7 @@ export class AssignmentSyncer {
           if (existingPageId) {
             // Page exists in Notion but wasn't in cache — update instead of create
             Debug.log(`Found existing Notion page for "${assignment.title}", updating instead of creating`);
+            stage = 'update';
 
             // Preserve manual status changes
             await this.applyStatusPreservation(properties, existingPageId, assignment.status);
@@ -457,6 +581,7 @@ export class AssignmentSyncer {
             });
           } else {
             // Genuinely new assignment - create in Notion
+            stage = 'create';
             this.applyCompletionCheckbox(properties, null);
             const result = await this.notionAPI.createPage(this.dataSourceId, properties);
 
@@ -476,6 +601,7 @@ export class AssignmentSyncer {
         } else if (comparison.needsUpdate) {
           // Assignment changed - update in Notion
           const notionPageId = comparison.cachedEntry.notionPageId;
+          stage = 'update';
 
           try {
             // Preserve manual status changes
@@ -524,6 +650,7 @@ export class AssignmentSyncer {
                 });
               } else {
                 // No live page exists — create a new one
+                stage = 'create';
                 this.applyCompletionCheckbox(properties, null);
                 const result = await this.notionAPI.createPage(this.dataSourceId, properties);
 
@@ -575,6 +702,7 @@ export class AssignmentSyncer {
                 });
                 statusCorrected = true;
               } catch (error) {
+                this.diagnostics.recordSuppressedError(error, 'status_correction');
                 Debug.warn(`Could not correct regressed status for "${assignment.title}":`, error.message);
               }
             }
@@ -590,6 +718,7 @@ export class AssignmentSyncer {
         }
 
       } catch (error) {
+        this.diagnostics.recordItemError(error, stage);
         Debug.error(`Error syncing assignment ${assignment.title}:`, error.message);
         SyncLogger.error(`Failed to sync "${assignment.title}": ${error.message}`, { canvasId, title: assignment.title, error: error.message });
         results.errors.push({
@@ -599,13 +728,30 @@ export class AssignmentSyncer {
         });
       }
 
+      // A service-wide circuit means Notion is giving the same answer to every
+      // request — an invalid token, an integration that lost access to the
+      // database. Walking the rest of the list would only add one identical
+      // error per assignment, so stop here and report what is left (#60).
+      if (this.notionAPI.circuitBreaker?.isServiceOpen()) {
+        const notAttempted = canvasAssignmentMap.size - syncIndex;
+        Debug.error(`Notion is rejecting every request; stopping sync with ${notAttempted} assignment(s) not attempted`);
+        SyncLogger.error(
+          `Sync stopped early: Notion is rejecting every request (${notAttempted} assignment(s) not attempted)`,
+          { notAttempted }
+        );
+        results.aborted = { reason: 'notion_unavailable', notAttempted };
+        break;
+      }
+
       // Small delay between API calls to respect rate limits
       await new Promise(resolve => setTimeout(resolve, 50));
     }
 
     // Step 4: Handle deleted assignments
     reportProgress({ phase: 'cleanup', current: canvasAssignmentMap.size, total: canvasAssignmentMap.size, errorCount: results.errors.length });
-    if (this.assignmentCache && activeCourseIds.length > 0) {
+    // Archiving pages goes to the same Notion that just rejected every write,
+    // so a sync that stopped early does not try to delete either.
+    if (this.assignmentCache && activeCourseIds.length > 0 && !results.aborted) {
       Debug.log('Checking for deleted assignments...');
       const cleanup = await this.assignmentCache.cleanupInactiveCourses(canvasIds);
 
@@ -622,6 +768,7 @@ export class AssignmentSyncer {
 
           results.deleted.push({ canvasId, courseId, notionPageId });
         } catch (error) {
+          this.diagnostics.recordItemError(error, 'delete');
           Debug.error(`Failed to delete assignment ${canvasId}:`, error.message);
           SyncLogger.error(`Failed to delete assignment: ${error.message}`, { canvasId, error: error.message });
           results.errors.push({
@@ -642,12 +789,16 @@ export class AssignmentSyncer {
     }
 
     // Step 5: Print summary and flush logs
+    results.diagnostics = this.summarizeDiagnostics(results);
     this.printSyncSummary(results);
     this.printRequestTimingSummary();
 
     SyncLogger.info(
       `Sync complete: ${results.created.length} created, ${results.updated.length} updated, ${results.deleted.length} deleted, ${results.errors.length} errors`
     );
+    // Bounded, category-only failure breakdown — no titles, IDs, URLs, or raw
+    // error text, so it is safe to keep in the sync log the popup shows.
+    SyncLogger.info(describeDiagnostics(results.diagnostics), { diagnostics: results.diagnostics });
     await SyncLogger.flush();
 
     reportProgress({ phase: 'complete', current: canvasAssignmentMap.size, total: canvasAssignmentMap.size, errorCount: results.errors.length, errors: results.errors });
@@ -681,6 +832,7 @@ export class AssignmentSyncer {
       this.applyCompletionCheckbox(properties, existingStatus);
     } catch (error) {
       // If we can't fetch the current page, just use the new status
+      this.diagnostics.recordSuppressedError(error, 'status_preservation');
       Debug.warn(`Could not fetch existing status for status preservation:`, error.message);
     }
   }
@@ -699,6 +851,22 @@ export class AssignmentSyncer {
   }
 
   /**
+   * Close this run's diagnostics (#72): an error-free run, a run with some
+   * failed items, and a run where every item failed are three different
+   * outcomes that an `errors` count alone cannot tell apart.
+   * @param {Object} results - the sync results accumulated for this run
+   * @returns {Object} bounded summary, safe to log and to report in aggregate
+   */
+  summarizeDiagnostics(results) {
+    const succeeded = results.created.length + results.updated.length +
+                      results.skipped.length + results.deleted.length;
+    return this.diagnostics.summarize({
+      itemsProcessed: succeeded + results.errors.length,
+      itemsSucceeded: succeeded
+    });
+  }
+
+  /**
    * Print detailed sync summary
    */
   printSyncSummary(results) {
@@ -712,6 +880,11 @@ export class AssignmentSyncer {
     Debug.log(`  Skipped (no changes): ${results.skipped.length}`);
     Debug.log(`  Deleted: ${results.deleted.length}`);
     Debug.log(`  Errors: ${results.errors.length}`);
+
+    if (results.diagnostics) {
+      Debug.log(`  Outcome: ${results.diagnostics.outcome}`);
+      Debug.log(`  ${describeDiagnostics(results.diagnostics)}`);
+    }
 
     if (results.errors.length > 0) {
       Debug.warn('Errors encountered:');
