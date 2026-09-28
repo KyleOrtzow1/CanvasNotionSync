@@ -139,8 +139,8 @@ function buildZip(entries) {
   end.writeUInt16LE(entries.length, 8); // entries on this disk
   end.writeUInt16LE(entries.length, 10); // total entries
   end.writeUInt32LE(centralBuf.length, 12);
-  end.writeUInt32LE(offset, 16); // central directory offset
-  end.writeUInt16LE(0, 18); // comment length
+  end.writeUInt32LE(offset, 16); // central directory offset (bytes 16-19)
+  end.writeUInt16LE(0, 20); // comment length
 
   return Buffer.concat([...chunks, centralBuf, end]);
 }
