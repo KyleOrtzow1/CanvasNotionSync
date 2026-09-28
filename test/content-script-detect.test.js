@@ -105,6 +105,8 @@ describe('CanvasAPIExtractor Canvas instance detection', () => {
     // Real shared module (this is the fix under test), loaded the same way
     // manifest.json and background-handlers.js load it ahead of content-script.js.
     await import('../src/utils/canvas-hosts.js');
+    // Loaded as a plain script ahead of the content script in the manifest (#60).
+    await import('../src/utils/circuit-breaker.js');
 
     await import('../content-script.js');
     CanvasAPIExtractor = globalThis.CanvasAPIExtractor;

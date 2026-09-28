@@ -1,5 +1,5 @@
 // Canvas-Notion Sync: API-Only Assignment Extractor
-/* global CanvasRateLimiter, CanvasValidator, getUserFriendlyCanvasError, Debug, CANVAS_HOST_RE */
+/* global CanvasRateLimiter, CanvasValidator, getUserFriendlyCanvasError, Debug, CANVAS_HOST_RE, createCanvasCircuitBreaker */
 
 // Prevent multiple initialization
 if (!window.canvasNotionExtractorLoaded) {
@@ -20,6 +20,9 @@ class CanvasAPIExtractor {
     this.baseURL = null;
     this.forceRefresh = false;
     this.rateLimiter = new CanvasRateLimiter();
+    // Stops a sync grinding through every assignment against a Canvas that is
+    // down or a session that has expired (see #60).
+    this.circuitBreaker = createCanvasCircuitBreaker();
     this.parallelBatchSize = 3;
     this.parallelBatchDelayMs = 500;
     this.extractionProgressIntervalMs = 300;
@@ -108,9 +111,11 @@ class CanvasAPIExtractor {
     }
 
     try {
-      const { data } = await this.rateLimiter.execute(async () => {
-        return await this._fetchWithHeaders(`${this.baseURL}/users/self`);
-      });
+      const { data } = await this.circuitBreaker.execute('/users/self', () =>
+        this.rateLimiter.execute(async () => {
+          return await this._fetchWithHeaders(`${this.baseURL}/users/self`);
+        })
+      );
 
       return { name: data.name, id: data.id };
     } catch (error) {
@@ -524,9 +529,28 @@ class CanvasAPIExtractor {
   }
 
   async makeSingleAPICallByURL(fullUrl) {
-    return this._dedupeRequest(fullUrl, () => this.rateLimiter.execute(async () => {
-      return await this._fetchWithHeaders(fullUrl);
-    }));
+    return this._dedupeRequest(fullUrl, () => this.circuitBreaker.execute(
+      this._endpointKey(fullUrl),
+      () => this.rateLimiter.execute(async () => {
+        return await this._fetchWithHeaders(fullUrl);
+      })
+    ));
+  }
+
+  // The shape of an endpoint, with the specific IDs removed, so calls for
+  // different courses or assignments count against one circuit:
+  //   .../api/v1/courses/12345/assignments?per_page=100 -> /courses/:id/assignments
+  _endpointKey(urlString) {
+    try {
+      const { pathname } = new URL(urlString);
+      const path = pathname.replace(/^.*\/api\/v1/, '') || '/';
+      return path
+        .split('/')
+        .map(segment => (/^\d+$/.test(segment) ? ':id' : segment))
+        .join('/');
+    } catch (error) {
+      return urlString;
+    }
   }
 
   async _fetchWithHeaders(urlString) {

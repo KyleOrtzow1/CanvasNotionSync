@@ -1,6 +1,8 @@
 import { NotionRateLimiter } from './notion-rate-limiter.js';
 import '../utils/debug.js';
-const { Debug } = globalThis;
+import '../utils/sync-logger.js';
+import '../utils/circuit-breaker.js';
+const { Debug, createNotionCircuitBreaker } = globalThis;
 
 // Create a shared rate limiter instance. Exported so tests can drive the real
 // API -> limiter -> retry composition instead of a stand-in.
@@ -17,6 +19,24 @@ export class NotionAPI {
       'Content-Type': 'application/json',
       'Notion-Version': '2025-09-03'
     };
+    // Per-instance so its state spans one sync and no longer (see #60): a
+    // syncer builds one NotionAPI, and a circuit opened by a broken run must
+    // not reject the first request of the next one.
+    this.circuitBreaker = createNotionCircuitBreaker();
+  }
+
+  // Every call goes through the same three layers, outermost first:
+  //   circuit breaker - stops asking once Notion has answered the same way N times
+  //   rate limiter    - owns the 429 budget and the burst/average windows
+  //   executeWithRetry- 409 conflicts and short-lived 5xx
+  // The breaker sits outside the limiter so a rejected request never waits in
+  // the queue, and sees one failure per logical request rather than one per
+  // retry the layers below already spent.
+  _execute(operationType, requestFunction) {
+    return this.circuitBreaker.execute(
+      operationType,
+      () => rateLimiter.execute(() => this.executeWithRetry(requestFunction, operationType))
+    );
   }
 
   // Get database info and data sources
@@ -46,7 +66,7 @@ export class NotionAPI {
       return await response.json();
     };
 
-    return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'getDatabase'));
+    return await this._execute('getDatabase', requestFunction);
   }
 
   // Query data source (not database directly)
@@ -88,7 +108,7 @@ export class NotionAPI {
       return await response.json();
     };
 
-    return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'queryDataSource'));
+    return await this._execute('queryDataSource', requestFunction);
   }
 
   // Create page in data source
@@ -122,7 +142,7 @@ export class NotionAPI {
       return await response.json();
     };
 
-    return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'createPage'));
+    return await this._execute('createPage', requestFunction);
   }
 
   // Get a data source, including its property schema. Needed to see which
@@ -153,7 +173,7 @@ export class NotionAPI {
       return await response.json();
     };
 
-    return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'getDataSource'));
+    return await this._execute('getDataSource', requestFunction);
   }
 
   // Add or rename properties on an existing data source's schema. Used to fit
@@ -185,7 +205,7 @@ export class NotionAPI {
       return await response.json();
     };
 
-    return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'updateDataSourceProperties'));
+    return await this._execute('updateDataSourceProperties', requestFunction);
   }
 
   // List the views on a data source (used to find the default view Notion
@@ -215,7 +235,7 @@ export class NotionAPI {
       return await response.json();
     };
 
-    return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'listViews'));
+    return await this._execute('listViews', requestFunction);
   }
 
   // Update a view's sorts, filter, quick filters, name, or configuration
@@ -245,7 +265,7 @@ export class NotionAPI {
       return await response.json();
     };
 
-    return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'updateView'));
+    return await this._execute('updateView', requestFunction);
   }
 
   // Get page by ID
@@ -274,7 +294,7 @@ export class NotionAPI {
       return await response.json();
     };
 
-    return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'getPage'));
+    return await this._execute('getPage', requestFunction);
   }
 
   async updatePage(pageId, properties, options = {}) {
@@ -311,7 +331,7 @@ export class NotionAPI {
       return await response.json();
     };
 
-    return await rateLimiter.execute(() => this.executeWithRetry(requestFunction, 'updatePage'));
+    return await this._execute('updatePage', requestFunction);
   }
 
   // Retry logic for 409 conflicts and server errors.
