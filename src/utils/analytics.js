@@ -91,6 +91,17 @@ export class Analytics {
     this.requests = new Set();
     this.windowStart = 0;
     this.windowCount = 0;
+    this.lastEventMicros = 0;
+  }
+
+  // GA orders events by their timestamp, not by arrival, and delivery runs
+  // requests concurrently. Stamping inside the serialized preparation step
+  // makes the recorded order the order track() was called in, even when a
+  // later event's request completes first. Strictly increasing, so two events
+  // prepared within the same millisecond still keep their relative order.
+  nextTimestampMicros(now) {
+    this.lastEventMicros = Math.max(now * 1000, this.lastEventMicros + 1);
+    return this.lastEventMicros;
   }
 
   serialize(task) {
@@ -234,6 +245,7 @@ export class Analytics {
     this.windowCount++;
     return {
       client_id: clientId,
+      timestamp_micros: this.nextTimestampMicros(now),
       consent: { ad_user_data: 'DENIED', ad_personalization: 'DENIED' },
       events: [{ name: event.name, params }]
     };

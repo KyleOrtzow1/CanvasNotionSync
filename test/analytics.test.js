@@ -44,7 +44,7 @@ describe('analytics privacy boundary and transport', () => {
     expect(new URL(url).searchParams.get('measurement_id')).toBe(CONFIG.measurementId);
     expect(options).toMatchObject({ method: 'POST', credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error' });
     const payload = payloads()[0];
-    expect(Object.keys(payload).sort()).toEqual(['client_id', 'consent', 'events']);
+    expect(Object.keys(payload).sort()).toEqual(['client_id', 'consent', 'events', 'timestamp_micros']);
     expect(payload.client_id).toBe(local.data.analyticsClientId);
     expect(payload.client_id).toMatch(/^[0-9]{1,10}\.[0-9]{1,10}$/);
     expect(payload.consent).toEqual({ ad_user_data: 'DENIED', ad_personalization: 'DENIED' });
@@ -274,6 +274,31 @@ describe('event meaning and reporting metadata', () => {
     await client.track('setup_completed');
     await client.track('setup_completed');
     expect(payloads().map(p => p.events[0].name)).toEqual(['notion_token_saved', 'setup_completed']);
+  });
+
+  test('events carry the order they were tracked in, not the order their requests finish', async () => {
+    const now = Date.now();
+    jest.spyOn(Date, 'now').mockReturnValue(now);
+    const completions = [];
+    fetch.mockImplementation(async (url, init) => {
+      const name = JSON.parse(init.body).events[0].name;
+      // The milestone's request outlives the completion that followed it.
+      if (name === 'setup_completed') await new Promise(resolve => setTimeout(resolve, 10));
+      completions.push(name);
+      return { ok: true };
+    });
+
+    const milestone = client.track('setup_completed');
+    const completion = client.track('sync_completed', { source: 'popup', created: 1, updated: 0,
+      skipped: 0, deleted: 0, errors: 0, duration_ms: 5 });
+    await Promise.all([milestone, completion]);
+
+    expect(completions).toEqual(['sync_completed', 'setup_completed']);
+    const stamped = payloads().map(payload => [payload.events[0].name, payload.timestamp_micros]);
+    expect(stamped.map(([name]) => name)).toEqual(['setup_completed', 'sync_completed']);
+    // Same millisecond on a mocked clock: ordering still has to hold.
+    expect(stamped[1][1]).toBeGreaterThan(stamped[0][1]);
+    expect(stamped[0][1]).toBeGreaterThanOrEqual(now * 1000);
   });
 
   test('skip reasons are limited to once per reason per day, including restarts', async () => {
