@@ -73,6 +73,45 @@ export function getAssignmentCache() {
   return assignmentCacheInstance;
 }
 
+// Canvas tabs a sync can run in, best first. Chrome's Memory Saver discards
+// background tabs, and a discarded (or not-yet-restored) tab can neither take
+// messages nor script injection, so it is dropped rather than tried (#87).
+// Missing fields count as usable, just not preferred.
+function rankCanvasTabs(tabs) {
+  const rank = tab => (tab.active ? 0 : tab.status === 'complete' ? 1 : 2);
+  return tabs
+    .filter(tab => !tab.discarded && tab.status !== 'unloaded')
+    .sort((a, b) => rank(a) - rank(b));
+}
+
+// Hand the Canvas token to the tab's content script, injecting the script
+// first if it isn't there. Resolves false if the tab can't be reached.
+async function connectCanvasTab(tabId, canvasToken) {
+  const setToken = () => chrome.tabs.sendMessage(tabId, { type: 'SET_CANVAS_TOKEN', token: canvasToken });
+  try {
+    await setToken();
+    return true;
+  } catch {
+    // Content script not loaded, need to inject it
+  }
+
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['src/utils/debug.js', 'src/utils/error-messages.js', 'src/utils/canvas-hosts.js', 'src/utils/circuit-breaker.js', 'src/utils/request-timing.js', 'src/validators/canvas-validator.js', 'src/api/canvas-rate-limiter.js', 'content-script.js']
+    });
+
+    // Wait for script to initialize
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    await setToken();
+    return true;
+  } catch (error) {
+    Debug.warn(`Could not load Canvas integration in tab ${tabId}:`, error?.message);
+    return false;
+  }
+}
+
 export async function handleBackgroundSync(canvasToken, options = {}) {
   const source = options.source || 'popup';
   const startedAt = Date.now();
@@ -108,44 +147,32 @@ export async function handleBackgroundSync(canvasToken, options = {}) {
       throw new Error('No Canvas tabs found. Please open a Canvas page and try again.');
     }
 
-    const activeTab = options.tabId === undefined ? tabs[0] : tabs.find(tab => tab.id === options.tabId);
-    if (!activeTab) throw new Error('No Canvas tabs found for this sync request.');
+    let candidates;
+    if (options.tabId === undefined) {
+      candidates = rankCanvasTabs(tabs);
+      if (candidates.length === 0) {
+        throw new Error('No Canvas tabs found that are loaded. Chrome unloaded your Canvas tab to save memory — click on it to reload it, then try again.');
+      }
+    } else {
+      candidates = tabs.filter(tab => tab.id === options.tabId);
+      if (candidates.length === 0) throw new Error('No Canvas tabs found for this sync request.');
+    }
     if (options.useStoredCanvasToken) canvasToken = credentials.canvasToken;
     started = true;
     void analytics.track('sync_started', { source });
-    
-    // Try to send Canvas token to content script
-    let contentScriptReady = false;
-    try {
-      await chrome.tabs.sendMessage(activeTab.id, {
-        type: 'SET_CANVAS_TOKEN',
-        token: canvasToken
-      });
-      contentScriptReady = true;
-    } catch (error) {
-      // Content script not loaded, need to inject it
-      contentScriptReady = false;
-    }
 
-    // If content script not ready, inject it
-    if (!contentScriptReady) {
-      try {
-        await chrome.scripting.executeScript({
-          target: { tabId: activeTab.id },
-          files: ['src/utils/debug.js', 'src/utils/error-messages.js', 'src/utils/canvas-hosts.js', 'src/utils/circuit-breaker.js', 'src/utils/request-timing.js', 'src/validators/canvas-validator.js', 'src/api/canvas-rate-limiter.js', 'content-script.js']
-        });
-        
-        // Wait for script to initialize
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Send Canvas token after injection
-        await chrome.tabs.sendMessage(activeTab.id, {
-          type: 'SET_CANVAS_TOKEN',
-          token: canvasToken
-        });
-      } catch (injectionError) {
-        throw new Error('Failed to load Canvas integration. Please refresh the Canvas page and try again.');
+    // Use the first candidate that accepts the content script — one tab
+    // failing (e.g. Chrome froze or unloaded it mid-query) shouldn't sink the
+    // sync while another Canvas tab is usable (#87).
+    let activeTab = null;
+    for (const tab of candidates) {
+      if (await connectCanvasTab(tab.id, canvasToken)) {
+        activeTab = tab;
+        break;
       }
+    }
+    if (!activeTab) {
+      throw new Error('Failed to load Canvas integration. Please refresh the Canvas page and try again.');
     }
 
     // Wait a moment for content script to be ready

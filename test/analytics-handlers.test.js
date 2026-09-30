@@ -260,6 +260,83 @@ describe('sync event ownership', () => {
   });
 });
 
+// #87: Chrome's Memory Saver discards background tabs; a discarded Canvas tab
+// first in the strip must not block a sync another Canvas tab could run.
+describe('Canvas tab selection', () => {
+  const messagedTabs = type => chrome.tabs.sendMessage.mock.calls
+    .filter(([, request]) => request.type === type).map(([id]) => id);
+
+  test('skips a discarded first tab and syncs from the loaded one', async () => {
+    chrome.tabs.query.mockResolvedValue([{ id: 1, discarded: true, status: 'unloaded' }, { id: 2, status: 'complete' }]);
+
+    expect((await handleBackgroundSync(null)).success).toBe(true);
+
+    expect(messagedTabs('SET_CANVAS_TOKEN')).toEqual([2]);
+    expect(messagedTabs('EXTRACT_ASSIGNMENTS')).toEqual([2]);
+    expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
+  });
+
+  test('prefers the active Canvas tab over an earlier background one', async () => {
+    chrome.tabs.query.mockResolvedValue([{ id: 1, status: 'complete' }, { id: 2, active: true, status: 'complete' }]);
+
+    await handleBackgroundSync(null);
+
+    expect(messagedTabs('EXTRACT_ASSIGNMENTS')).toEqual([2]);
+  });
+
+  test('falls through to the next tab when one cannot load the integration', async () => {
+    chrome.tabs.query.mockResolvedValue([{ id: 1 }, { id: 2 }]);
+    chrome.tabs.sendMessage.mockImplementation(async (id, request) => {
+      if (id === 1) throw new Error('Could not establish connection. Receiving end does not exist.');
+      return request.type === 'EXTRACT_ASSIGNMENTS'
+        ? { success: true, assignments: [{ title: 'a' }], activeCourseIds: [] } : { success: true };
+    });
+    chrome.scripting.executeScript.mockRejectedValue(new Error('Frame was removed'));
+
+    expect((await handleBackgroundSync(null)).success).toBe(true);
+
+    expect(chrome.scripting.executeScript).toHaveBeenCalledWith(expect.objectContaining({ target: { tabId: 1 } }));
+    expect(messagedTabs('EXTRACT_ASSIGNMENTS')).toEqual([2]);
+    expect(track.mock.calls.filter(([name]) => name === 'sync_started')).toHaveLength(1);
+  });
+
+  test('reports the integration error when no Canvas tab can be reached', async () => {
+    chrome.tabs.sendMessage.mockRejectedValue(new Error('Receiving end does not exist.'));
+    chrome.scripting.executeScript.mockRejectedValue(new Error('Frame was removed'));
+
+    await expect(handleBackgroundSync(null)).rejects.toThrow('Failed to load Canvas integration');
+    expect(chrome.scripting.executeScript).toHaveBeenCalledTimes(2);
+    expect(track).toHaveBeenCalledWith('sync_failed', expect.objectContaining({ category: 'integration' }));
+  });
+
+  test('says the tabs were unloaded when every Canvas tab is discarded', async () => {
+    chrome.tabs.query.mockResolvedValue([{ id: 1, discarded: true }, { id: 2, status: 'unloaded' }]);
+
+    await expect(handleBackgroundSync(null)).rejects.toThrow(/^No Canvas tabs found that are loaded\..*click on it to reload it/);
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+    expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
+  });
+
+  test('a periodic sync with only discarded tabs is a quiet skip, not a failure', async () => {
+    setupPeriodicSync();
+    chrome.tabs.query.mockResolvedValue([{ id: 1, discarded: true }]);
+
+    await alarms[0]({ name: 'periodicSync' });
+
+    expect(track).toHaveBeenCalledWith('auto_sync_skipped', { reason: 'no_canvas_tab' });
+    expect(track.mock.calls.some(([name]) => name.startsWith('sync_'))).toBe(false);
+  });
+
+  test('a sync started from a Canvas page still uses only that page', async () => {
+    chrome.tabs.query.mockResolvedValue([{ id: 1, active: true, status: 'complete' }, { id: 2 }]);
+
+    await send({ action: 'START_BACKGROUND_SYNC' }, canvas);
+
+    expect(messagedTabs('SET_CANVAS_TOKEN')).toEqual([2]);
+    expect(messagedTabs('EXTRACT_ASSIGNMENTS')).toEqual([2]);
+  });
+});
+
 // The funnel reads installation -> token saved -> setup completed -> error-free
 // sync, so the milestone a sync verifies has to be reported ahead of that sync's
 // own completion, on every path and without depending on request arrival order.

@@ -109,7 +109,7 @@ The extension provides user-friendly error messages with actionable next steps. 
 * **"Notion token invalid or expired"**: Your Notion access token has expired. Generate a new token and update it in the extension's setup steps.
 * **"Notion connection failed"**: Incorrect access token or database ID, or the database has not been shared with your integration.
 * **"Rate limited"**: Too many API requests in a short period. The extension will automatically retry with backoff. If this persists, wait a few minutes before syncing again.
-* **"No Canvas tabs found"**: You must have an active tab open to a Canvas page for sync to work.
+* **"No Canvas tabs found"**: You must have an active tab open to a Canvas page for sync to work. If the message says no Canvas tabs are *loaded*, Chrome unloaded your Canvas tab to save memory — click on it to reload it, then sync again.
 
 You can enable **Debug Mode** in the extension settings for verbose logging, and view recent sync history in the **Sync Logs** section of the popup.
 
