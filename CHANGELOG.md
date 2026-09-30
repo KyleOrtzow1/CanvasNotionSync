@@ -12,6 +12,18 @@ GitHub Release notes — so what is written here is what ships.
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-09-30
+
+### Fixed
+
+- Syncing from the popup, or the automatic sync every 30 minutes, no longer
+  fails with "Failed to load Canvas integration" when Chrome has unloaded a
+  Canvas tab to save memory. The sync used to pick the leftmost Canvas tab, even
+  if it was unloaded. It now skips unloaded tabs and prefers the Canvas tab you
+  are looking at. If one Canvas tab can't be reached, it tries the next. If
+  every Canvas tab is unloaded, the popup now tells you to click one to reload
+  it (#87).
+
 ## [1.3.0] - 2026-09-28
 
 ### Added
