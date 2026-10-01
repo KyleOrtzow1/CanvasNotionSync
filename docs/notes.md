@@ -52,6 +52,15 @@ incoming one, and reads it back with `extractCanvasIdFromProperty()`. Keeping
 it textual means the value written and the value compared are the same string,
 with no numeric coercion in between.
 
+## Submissions
+
+Submission state is not fetched separately. The course assignment list is
+requested with `include=submission`, so each assignment arrives with the current
+user's submission attached and a sync costs one Canvas request per course rather
+than one per assignment. [canvas-submissions.md](canvas-submissions.md) has the
+request-count comparison against the batch `students/submissions` endpoint and
+the conditions that would justify switching.
+
 ## Status preservation
 
 Canvas is authoritative for assignment data but *not* for status. Users move
@@ -89,7 +98,7 @@ was, and it drifted until ~40 of its open items were already built.
 | [#54](../../issues/54) | Retry Canvas 5xx and network errors |
 | [#55](../../issues/55) | Unit tests for CredentialManager encrypt/decrypt |
 | [#56](../../issues/56) | Cache the Notion schema and validate select options |
-| [#57](../../issues/57) | Investigate batch Canvas submission fetching |
+| [#57](../../issues/57) | Investigate batch Canvas submission fetching — answered in [canvas-submissions.md](canvas-submissions.md) |
 | [#58](../../issues/58) | Deduplicate in-flight Canvas requests |
 | [#59](../../issues/59) | Validate the Canvas token's format before use |
 | [#60](../../issues/60) | Circuit breaker for repeated API failures |
